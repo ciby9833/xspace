@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>现代化预订界面测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #333;
+        }
+        .test-description {
+            color: #666;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-left: 3px solid #52c41a;
+            padding-left: 12px;
+            margin-bottom: 8px;
+            background: #f6ffed;
+        }
+        .test-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-success {
+            background: #f6ffed;
+            color: #52c41a;
+            border: 1px solid #b7eb8f;
+        }
+        .status-pending {
+            background: #fff7e6;
+            color: #fa8c16;
+            border: 1px solid #ffd591;
+        }
+        .code-block {
+            background: #f5f5f5;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎯 现代化预订界面优化测试</h1>
+        
+        <div class="test-section">
+            <div class="test-title">📅 时间选择优化 <span class="test-status status-success">已实现</span></div>
+            <div class="test-description">
+                参考现代日历界面，实现了拖拽式时间选择功能，用户可以直观地选择预订时间段。
+            </div>
+            <ul class="feature-list">
+                <li>✅ 周视图日历布局，显示7天时间网格</li>
+                <li>✅ 支持拖拽选择时间范围（最少30分钟）</li>
+                <li>✅ 实时显示已占用时间段</li>
+                <li>✅ 自动过滤过去时间，用户只能选择当前时间之后</li>
+                <li>✅ 现代化的视觉设计和交互体验</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🕐 时间验证逻辑 <span class="test-status status-success">已实现</span></div>
+            <div class="test-description">
+                系统会自动判断用户当前时间，确保只能预订未来的时间段。
+            </div>
+            <ul class="feature-list">
+                <li>✅ 基于用户时区的当前时间判断</li>
+                <li>✅ 过去时间显示为灰色且不可选择</li>
+                <li>✅ 今天的时间会特殊标识</li>
+                <li>✅ 最少预订时长限制（30分钟）</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🏠 房间管理优化 <span class="test-status status-success">已实现</span></div>
+            <div class="test-description">
+                优化房间选择流程，提供更清晰的房间信息展示。
+            </div>
+            <ul class="feature-list">
+                <li>✅ 房间下拉选择器，显示容量信息</li>
+                <li>✅ 单房间自动选择</li>
+                <li>✅ 房间占用信息实时显示</li>
+                <li>✅ 点击占用时间段查看详情</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">📱 响应式设计 <span class="test-status status-success">已实现</span></div>
+            <div class="test-description">
+                适配不同屏幕尺寸，确保在各种设备上都有良好的使用体验。
+            </div>
+            <ul class="feature-list">
+                <li>✅ 桌面端：完整时间网格显示</li>
+                <li>✅ 平板端：适配宽度调整</li>
+                <li>✅ 移动端：横向滚动支持</li>
+                <li>✅ 触摸设备优化</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🔧 技术实现</div>
+            <div class="test-description">
+                核心技术实现说明：
+            </div>
+            <div class="code-block">
+// 时间选择状态管理
+const selectedTimeRange = ref({
+  date: null,
+  startTime: null, 
+  endTime: null,
+  roomId: null
+})
+
+// 拖拽选择逻辑
+const startTimeSelection = (date, hour) => {
+  if (isPastTime(date, hour) || getOccupancyInfo(date, hour)) return
+  isSelecting.value = true
+  selectionStart.value = { date, hour }
+}
+
+// 时间验证
+const isPastTime = (date, hour) => {
+  const timePoint = dayjs(date).hour(Math.floor(hour)).minute((hour % 1) * 60)
+  return timePoint.isBefore(currentUserTime.value)
+}
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🧪 测试建议</div>
+            <div class="test-description">
+                建议进行以下测试以验证功能：
+            </div>
+            <ol style="padding-left: 20px; color: #666;">
+                <li>选择不同门店，验证房间列表加载</li>
+                <li>尝试拖拽选择不同时间范围</li>
+                <li>点击已占用时间段查看详情</li>
+                <li>验证过去时间不可选择</li>
+                <li>测试不同屏幕尺寸的响应式效果</li>
+                <li>验证最少30分钟的预订限制</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html> 

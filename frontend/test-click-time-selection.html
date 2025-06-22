@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>点击式时间选择测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #333;
+        }
+        .test-description {
+            color: #666;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-left: 3px solid #52c41a;
+            padding-left: 12px;
+            margin-bottom: 8px;
+            background: #f6ffed;
+        }
+        .test-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-success {
+            background: #f6ffed;
+            color: #52c41a;
+            border: 1px solid #b7eb8f;
+        }
+        .code-block {
+            background: #f5f5f5;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            margin: 16px 0;
+            max-width: 400px;
+        }
+        .demo-cell {
+            height: 30px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .demo-cell.available {
+            background: #f6ffed;
+            border-color: #d9f7be;
+        }
+        .demo-cell.occupied {
+            background: #fff2f0;
+            border-color: #ffccc7;
+            color: #ff4d4f;
+        }
+        .demo-cell.start-selected {
+            background: #fff7e6;
+            border-color: #ffa940;
+            color: #fa8c16;
+        }
+        .demo-cell.selected {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+        }
+        .step-flow {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 16px 0;
+        }
+        .step {
+            padding: 8px 16px;
+            background: #e6f7ff;
+            border: 1px solid #91d5ff;
+            border-radius: 4px;
+            color: #1890ff;
+            font-weight: 500;
+        }
+        .step.active {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+        }
+        .arrow {
+            color: #666;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🖱️ 点击式时间选择优化测试</h1>
+        
+        <div class="test-section">
+            <div class="test-title">📅 日期显示优化 <span class="test-status status-success">已实现</span></div>
+            <div class="test-description">
+                现在只显示今天和以后的日期，过去的日期不再显示在日历中。
+            </div>
+            <ul class="feature-list">
+                <li>✅ 只显示今天和以后的日期</li>
+                <li>✅ 过去日期完全隐藏，不占用界面空间</li>
+                <li>✅ 导航按钮智能控制，不能导航到全部是过去日期的周</li>
+                <li>✅ 今天的日期特殊标识（蓝色高亮）</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🖱️ 点击式时间选择 <span class="test-status status-success">已实现</span></div>
+            <div class="test-description">
+                改进了时间选择交互方式，从拖拽改为点击式选择，更加精确和直观。
+            </div>
+            
+            <div class="step-flow">
+                <div class="step active">第一次点击</div>
+                <div class="arrow">→</div>
+                <div class="step">选择开始时间</div>
+                <div class="arrow">→</div>
+                <div class="step">第二次点击</div>
+                <div class="arrow">→</div>
+                <div class="step">选择结束时间</div>
+            </div>
+            
+            <ul class="feature-list">
+                <li>✅ 第一次点击设置开始时间（橙色标识）</li>
+                <li>✅ 第二次点击设置结束时间（蓝色标识）</li>
+                <li>✅ 开始和结束时间必须在同一天</li>
+                <li>✅ 结束时间必须晚于开始时间</li>
+                <li>✅ 实时提示用户操作状态</li>
+                <li>✅ 支持取消选择重新开始</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🚫 智能冲突检测 <span class="test-status status-success">已实现</span></div>
+            <div class="test-description">
+                系统会检查选择的时间范围内是否有已占用的时间段，确保预订的有效性。
+            </div>
+            <ul class="feature-list">
+                <li>✅ 不能点击已占用的时间段</li>
+                <li>✅ 检查选择范围内的所有时间段</li>
+                <li>✅ 如果中间有占用时间段，提示重新选择</li>
+                <li>✅ 清晰的错误提示信息</li>
+                <li>✅ 自动重置选择状态</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🎨 视觉状态指示</div>
+            <div class="test-description">
+                不同的时间状态用不同颜色表示，让用户清楚了解当前选择状态。
+            </div>
+            
+            <div class="demo-grid">
+                <div class="demo-cell available">可选</div>
+                <div class="demo-cell occupied">占用</div>
+                <div class="demo-cell start-selected">开始</div>
+                <div class="demo-cell selected">已选</div>
+                <div class="demo-cell" style="background: #f5f5f5; color: #bfbfbf;">过期</div>
+            </div>
+            
+            <ul class="feature-list">
+                <li>✅ 绿色：可预订时间段</li>
+                <li>✅ 红色：已占用时间段</li>
+                <li>✅ 橙色：临时选择的开始时间</li>
+                <li>✅ 蓝色：最终选择的时间范围</li>
+                <li>✅ 灰色：过去时间（不可选择）</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">💡 用户体验优化</div>
+            <div class="test-description">
+                增强了用户交互体验，提供清晰的操作指引和反馈。
+            </div>
+            <ul class="feature-list">
+                <li>✅ 实时操作提示消息</li>
+                <li>✅ 选择状态显示栏</li>
+                <li>✅ 一键取消选择功能</li>
+                <li>✅ 智能错误提示</li>
+                <li>✅ 成功选择确认</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🔧 技术实现</div>
+            <div class="test-description">
+                核心技术实现说明：
+            </div>
+            <div class="code-block">
+// 点击式时间选择状态管理
+const selectionState = ref('none') // 'none', 'selecting_end'
+const tempStartTime = ref(null)
+const tempStartDate = ref(null)
+
+// 点击处理逻辑
+const handleTimeClick = (date, hour) => {
+  if (selectionState.value === 'none') {
+    // 第一次点击：设置开始时间
+    tempStartTime.value = hour
+    tempStartDate.value = date
+    selectionState.value = 'selecting_end'
+  } else if (selectionState.value === 'selecting_end') {
+    // 第二次点击：设置结束时间并验证
+    validateAndSetTimeRange(date, hour)
+  }
+}
+
+// 冲突检测
+const hasOccupied = timeSlots.value.some(checkHour => {
+  return checkHour >= startHour && checkHour < endHour && 
+         getOccupancyInfo(date, checkHour)
+})
+            </div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">🧪 测试步骤</div>
+            <div class="test-description">
+                建议按以下步骤测试新的时间选择功能：
+            </div>
+            <ol style="padding-left: 20px; color: #666;">
+                <li>选择一个项目和门店，进入时间选择界面</li>
+                <li>验证只显示今天和以后的日期</li>
+                <li>第一次点击一个可用时间段，观察橙色标识</li>
+                <li>第二次点击同一天的另一个时间段，观察蓝色选择</li>
+                <li>尝试点击不同天的时间段，验证错误提示</li>
+                <li>尝试选择包含占用时间段的范围，验证冲突检测</li>
+                <li>使用取消按钮重新选择</li>
+                <li>验证最少30分钟的预订限制</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html> 
