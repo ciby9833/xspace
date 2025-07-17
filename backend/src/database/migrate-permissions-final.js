@@ -1,4 +1,4 @@
-// 权限系统最终迁移 - 支持完全自定义角色管理
+// 权限系统最终迁移 - 支持完全自定义角色管理 node src/database/migrate-permissions-final.js
 require('dotenv').config();
 
 const pool = require('./connection');

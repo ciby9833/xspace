@@ -1,3 +1,4 @@
+// 房间权限添加 - node src/database/add-room-permissions.js
 const pool = require('./connection');
 
 async function addRoomPermissions() {
@@ -20,7 +21,7 @@ async function addRoomPermissions() {
     const moduleId = moduleResult.rows[0].id;
     console.log('✅ 房间管理模块已添加，ID:', moduleId);
     
-    // 2. 添加房间权限项
+    // 2. 添加房间权限项（与permissions.js配置保持一致）
     const permissions = [
       { name: 'view', display_name: '查看房间', key: 'room.view' },
       { name: 'create', display_name: '创建房间', key: 'room.create' },

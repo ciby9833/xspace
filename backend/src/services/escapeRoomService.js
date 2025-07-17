@@ -2,6 +2,28 @@ const escapeRoomModel = require('../models/escapeRoomModel');
 const { ACCOUNT_LEVELS } = require('../config/permissions');
 
 class EscapeRoomService {
+  // 🔧 解析 JSON 字段的辅助方法
+  parseJsonField(field, defaultValue = []) {
+    if (!field) return defaultValue;
+    
+    // 如果已经是数组，直接返回
+    if (Array.isArray(field)) {
+      return field;
+    }
+    
+    // 如果是字符串，尝试解析
+    if (typeof field === 'string') {
+      try {
+        const parsed = JSON.parse(field);
+        return Array.isArray(parsed) ? parsed : defaultValue;
+      } catch (e) {
+        console.warn('JSON 解析失败:', field, e.message);
+        return defaultValue;
+      }
+    }
+    
+    return defaultValue;
+  }
   // 获取密室列表
   async getList(filters = {}, user) {
     try {
@@ -60,9 +82,20 @@ class EscapeRoomService {
 
       const escapeRooms = await escapeRoomModel.findByCompanyId(companyId, processedFilters);
       
+      // 🔧 处理 JSON 字段，确保前端接收到正确的数据格式
+      const processedEscapeRooms = escapeRooms.map(escapeRoom => ({
+        ...escapeRoom,
+        // 处理 supported_languages 字段
+        supported_languages: this.parseJsonField(escapeRoom.supported_languages, ['IND']),
+        // 处理 cover_images 字段
+        cover_images: this.parseJsonField(escapeRoom.cover_images, []),
+        // 处理 npc_roles 字段
+        npc_roles: this.parseJsonField(escapeRoom.npc_roles, [])
+      }));
+      
       return {
-        list: escapeRooms,
-        total: escapeRooms.length,
+        list: processedEscapeRooms,
+        total: processedEscapeRooms.length,
         filters: processedFilters
       };
     } catch (error) {
@@ -98,7 +131,15 @@ class EscapeRoomService {
         throw new Error('权限不足');
       }
 
-      return escapeRoom;
+      // 🔧 处理 JSON 字段
+      const processedEscapeRoom = {
+        ...escapeRoom,
+        supported_languages: this.parseJsonField(escapeRoom.supported_languages, ['IND']),
+        cover_images: this.parseJsonField(escapeRoom.cover_images, []),
+        npc_roles: this.parseJsonField(escapeRoom.npc_roles, [])
+      };
+
+      return processedEscapeRoom;
     } catch (error) {
       console.error('获取密室详情失败:', error);
       throw error;
@@ -139,7 +180,16 @@ class EscapeRoomService {
       };
 
       const escapeRoom = await escapeRoomModel.create(createData);
-      return escapeRoom;
+      
+      // 🔧 处理 JSON 字段
+      const processedEscapeRoom = {
+        ...escapeRoom,
+        supported_languages: this.parseJsonField(escapeRoom.supported_languages, ['IND']),
+        cover_images: this.parseJsonField(escapeRoom.cover_images, []),
+        npc_roles: this.parseJsonField(escapeRoom.npc_roles, [])
+      };
+      
+      return processedEscapeRoom;
     } catch (error) {
       console.error('创建密室失败:', error);
       throw error;
@@ -179,7 +229,16 @@ class EscapeRoomService {
       const { company_id, id, created_at, ...allowedUpdateData } = updateData;
 
       const updatedEscapeRoom = await escapeRoomModel.update(escapeRoomId, allowedUpdateData);
-      return updatedEscapeRoom;
+      
+      // 🔧 处理 JSON 字段
+      const processedEscapeRoom = {
+        ...updatedEscapeRoom,
+        supported_languages: this.parseJsonField(updatedEscapeRoom.supported_languages, ['IND']),
+        cover_images: this.parseJsonField(updatedEscapeRoom.cover_images, []),
+        npc_roles: this.parseJsonField(updatedEscapeRoom.npc_roles, [])
+      };
+      
+      return processedEscapeRoom;
     } catch (error) {
       console.error('更新密室失败:', error);
       throw error;
@@ -217,7 +276,16 @@ class EscapeRoomService {
       }
 
       const escapeRooms = await escapeRoomModel.findByStoreId(storeId);
-      return escapeRooms;
+      
+      // 🔧 处理 JSON 字段
+      const processedEscapeRooms = escapeRooms.map(escapeRoom => ({
+        ...escapeRoom,
+        supported_languages: this.parseJsonField(escapeRoom.supported_languages, ['IND']),
+        cover_images: this.parseJsonField(escapeRoom.cover_images, []),
+        npc_roles: this.parseJsonField(escapeRoom.npc_roles, [])
+      }));
+      
+      return processedEscapeRooms;
     } catch (error) {
       console.error('获取门店密室列表失败:', error);
       throw error;
@@ -378,7 +446,16 @@ class EscapeRoomService {
 
       // 更新密室
       const result = await escapeRoomModel.update(escapeRoomId, { cover_images: updatedImages });
-      return result;
+      
+      // 🔧 处理 JSON 字段
+      const processedResult = {
+        ...result,
+        supported_languages: this.parseJsonField(result.supported_languages, ['IND']),
+        cover_images: this.parseJsonField(result.cover_images, []),
+        npc_roles: this.parseJsonField(result.npc_roles, [])
+      };
+      
+      return processedResult;
     } catch (error) {
       console.error('删除密室图片失败:', error);
       throw error;

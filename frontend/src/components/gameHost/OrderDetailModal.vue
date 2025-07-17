@@ -65,8 +65,8 @@
           <a-descriptions-item label="补位人数">
             {{ order.support_player_count }}人
           </a-descriptions-item>
-          <a-descriptions-item label="客户语言">
-            {{ getLanguageText(order.language) }}
+          <a-descriptions-item label="支持语言">
+            {{ getDisplayLanguages(order) }}
           </a-descriptions-item>
           <a-descriptions-item label="内部补位">
             <a-tag :color="order.internal_support ? 'green' : 'default'">
@@ -264,6 +264,32 @@ const getLanguageText = (language) => {
     'IND': '印尼语'
   }
   return languageMap[language] || language
+}
+
+const getDisplayLanguages = (order) => {
+  if (!order) return '未知'
+  
+  // 优先使用display_languages字段
+  if (order.display_languages) {
+    return order.display_languages
+  }
+  
+  // 兼容旧数据
+  const languages = []
+  if (order.script_supported_languages) {
+    const scriptLangs = Array.isArray(order.script_supported_languages) 
+      ? order.script_supported_languages 
+      : [order.script_supported_languages]
+    languages.push(...scriptLangs.map(lang => getLanguageText(lang)))
+  }
+  if (order.escape_room_supported_languages) {
+    const roomLangs = Array.isArray(order.escape_room_supported_languages) 
+      ? order.escape_room_supported_languages 
+      : [order.escape_room_supported_languages]
+    languages.push(...roomLangs.map(lang => getLanguageText(lang)))
+  }
+  
+  return languages.length > 0 ? languages.join(' / ') : '未知'
 }
 
 const previewImage = (image) => {

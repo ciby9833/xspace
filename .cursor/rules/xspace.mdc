@@ -1,0 +1,174 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# XSpace 项目开发规范
+
+## 项目概述
+XSpace 是一个剧本杀与密室逃脱管理系统，采用前后端分离架构。
+
+## 技术栈
+### 后端
+- **框架**: Node.js + Express.js
+- **数据库**: PostgreSQL (数据库名: xspace)
+- **认证**: JWT (jsonwebtoken)
+- **文件上传**: Multer
+- **安全**: Helmet, CORS
+- **验证**: express-validator
+- **时区处理**: moment-timezone
+- **密码加密**: bcryptjs
+
+### 前端
+- **框架**: Vue 3 + Composition API
+- **UI库**: Ant Design Vue 4.x
+- **状态管理**: Pinia
+- **路由**: Vue Router 4
+- **构建工具**: Vite
+- **HTTP客户端**: Axios
+- **拖拽**: vuedraggable
+
+## 项目结构
+```
+xspace/
+├── backend/                 # 后端代码
+│   ├── src/
+│   │   ├── controllers/     # 控制器层
+│   │   ├── models/         # 数据模型
+│   │   ├── services/       # 业务逻辑层
+│   │   ├── routes/         # 路由定义
+│   │   ├── utils/          # 工具函数
+│   │   ├── validators/     # 数据验证
+│   │   └── database/       # 数据库迁移和种子
+│   ├── uploads/            # 文件上传目录
+│   └── .env               # 环境变量配置
+├── frontend/               # 前端代码
+│   ├── src/
+│   │   ├── components/     # Vue组件
+│   │   ├── views/          # 页面视图
+│   │   ├── stores/         # Pinia状态管理
+│   │   ├── api/            # API接口
+│   │   └── utils/          # 工具函数
+│   └── vite.config.js     # Vite配置
+└── .cursor/rules/         # Cursor规则文件
+```
+
+## 环境配置
+
+### 后端环境变量 (.env)
+```env
+# 服务器配置
+PORT=3000
+NODE_ENV=development
+
+# 数据库配置
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=xspace
+DB_USER=your_username
+DB_PASSWORD=your_password
+
+# JWT配置
+JWT_SECRET=your_jwt_secret
+JWT_EXPIRES_IN=24h
+
+# 时区配置
+TIMEZONE=Asia/Shanghai
+
+# 国际化配置
+DEFAULT_LOCALE=zh-CN
+SUPPORTED_LOCALES=zh-CN,en-US,id-ID
+
+# CORS配置
+CORS_ORIGIN=http://localhost:5173
+
+# 文件上传配置
+UPLOAD_LIMIT=5MB
+MAX_FILES=10
+```
+
+### 前端环境变量
+```env
+# API基础URL
+VITE_API_BASE_URL=http://localhost:3000/api
+
+# 应用配置
+VITE_APP_TITLE=XSpace管理系统
+VITE_DEFAULT_LOCALE=zh-CN
+```
+
+## 开发规范
+
+### 用户管理
+- **默认密码**: 所有新用户的默认密码统一为 `password`
+- **角色系统**: 使用 role_id 关联角色，role 字段已废弃
+- **权限管理**: 基于权限组的细粒度权限控制
+
+### 国际化支持
+- **支持语言**: 中文(zh-CN)、英文(en-US)、印尼语(id-ID)
+- **默认语言**: 中文
+- **语言切换**: 通过 i18n 工具函数实现
+
+### 数据库规范
+- **数据库名**: xspace
+- **字符集**: UTF-8
+- **时区**: Asia/Shanghai
+- **命名规范**: 表名使用复数形式，字段使用下划线命名
+
+### API规范
+- **基础路径**: `/api`
+- **认证方式**: Bearer Token (JWT)
+- **响应格式**: JSON
+- **错误处理**: 统一错误响应格式
+- **文件上传**: 支持图片格式，大小限制5MB
+
+### 前端规范
+- **组件命名**: PascalCase
+- **文件命名**: kebab-case
+- **状态管理**: 使用 Pinia 进行全局状态管理
+- **路由**: 使用 Vue Router 4
+- **UI组件**: 优先使用 Ant Design Vue 组件
+
+### 代码风格
+- **后端**: 使用 ES6+ 语法，async/await 处理异步
+- **前端**: 使用 Vue 3 Composition API
+- **注释**: 重要逻辑必须添加注释
+- **错误处理**: 统一的错误处理机制
+
+## 常用命令
+
+### 后端
+```bash
+# 开发模式
+npm run dev
+
+# 生产模式
+npm start
+
+# 数据库迁移
+npm run migrate
+
+# 数据库种子
+npm run seed
+```
+
+### 前端
+```bash
+# 开发模式
+npm run dev
+
+# 构建生产版本
+npm run build
+
+# 预览构建结果
+npm run preview
+```
+
+## 注意事项
+1. 所有新功能必须包含权限控制
+2. 文件上传需要验证文件类型和大小
+3. 敏感操作需要记录日志
+4. 数据库操作使用事务确保数据一致性
+5. 前端组件需要考虑响应式设计
+6. API接口需要添加适当的验证和错误处理
+

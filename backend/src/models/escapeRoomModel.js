@@ -95,6 +95,20 @@ class EscapeRoomModel {
       paramIndex++;
     }
 
+    // 🆕 添加语言筛选
+    if (filters.language) {
+      query += ` AND er.supported_languages::jsonb ? $${paramIndex}`;
+      params.push(filters.language);
+      paramIndex++;
+    }
+
+    // 🆕 添加多语言筛选支持
+    if (filters.languages && Array.isArray(filters.languages) && filters.languages.length > 0) {
+      const languageConditions = filters.languages.map(() => `er.supported_languages::jsonb ? $${paramIndex++}`);
+      query += ` AND (${languageConditions.join(' OR ')})`;
+      params.push(...filters.languages);
+    }
+
     // 🆕 添加门店筛选
     if (filters.store_id) {
       query += ` AND ser.store_id = $${paramIndex} AND ser.is_available = true`;
@@ -124,6 +138,13 @@ class EscapeRoomModel {
     if (filters.keyword) {
       query += ` AND (er.name ILIKE $${paramIndex} OR er.description ILIKE $${paramIndex})`;
       params.push(`%${filters.keyword}%`);
+      paramIndex++;
+    }
+
+    // 添加语言筛选
+    if (filters.language) {
+      query += ` AND er.supported_languages::jsonb ? $${paramIndex}`;
+      params.push(filters.language);
       paramIndex++;
     }
 
@@ -171,21 +192,22 @@ class EscapeRoomModel {
   async create(escapeRoomData) {
     const {
       company_id, name, horror_level, price, cover_images, min_players, max_players,
-      duration, npc_count, npc_roles, description, props
+      duration, npc_count, npc_roles, description, props, supported_languages
     } = escapeRoomData;
 
     const query = `
       INSERT INTO escape_rooms (
         company_id, name, horror_level, price, cover_images, min_players, max_players,
-        duration, npc_count, npc_roles, description, props
+        duration, npc_count, npc_roles, description, props, supported_languages
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `;
 
     const result = await pool.query(query, [
       company_id, name, horror_level, price, JSON.stringify(cover_images || []), 
-      min_players, max_players, duration, npc_count || 0, npc_roles, description, props
+      min_players, max_players, duration, npc_count || 0, npc_roles, description, props,
+      JSON.stringify(supported_languages || ['IND'])
     ]);
 
     return result.rows[0];
@@ -202,7 +224,7 @@ class EscapeRoomModel {
       if (updateData[key] !== undefined) {
         fields.push(`${key} = $${paramIndex}`);
         // 特殊处理JSON字段
-        if (['cover_images'].includes(key)) {
+        if (['cover_images', 'supported_languages'].includes(key)) {
           values.push(JSON.stringify(updateData[key]));
         } else {
           values.push(updateData[key]);

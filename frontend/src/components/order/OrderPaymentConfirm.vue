@@ -65,18 +65,7 @@
             />
           </div>
           
-          <div class="form-item">
-            <label class="required">客户语言</label>
-            <a-select 
-              v-model:value="formData.language"
-              placeholder="请选择客户语言"
-              class="full-width"
-            >
-              <a-select-option value="印尼语">🇮🇩 印尼语</a-select-option>
-              <a-select-option value="英语">🇺🇸 英语</a-select-option>
-              <a-select-option value="中文">🇨🇳 中文</a-select-option>
-            </a-select>
-          </div>
+
         </div>
       </div>
 
@@ -134,6 +123,34 @@
                 </div>
               </a-select-option>
             </a-select>
+          </div>
+          
+          <!-- 🆕 密室NPC角色选择 -->
+          <div v-if="bookingData.item_type === 'escape_room' && escapeRoomNpcRoles.length > 0" class="form-item full-width">
+            <label>NPC角色</label>
+            <a-select 
+              v-model:value="formData.escape_room_npc_roles"
+              mode="multiple"
+              placeholder="请选择NPC角色（可多选）"
+              class="full-width"
+              allowClear
+              show-search
+              :filter-option="filterNpcOption"
+            >
+              <a-select-option 
+                v-for="role in escapeRoomNpcRoles" 
+                :key="role" 
+                :value="role"
+              >
+                <div class="npc-role-option">
+                  <TeamOutlined />
+                  <span>{{ role }}</span>
+                </div>
+              </a-select-option>
+            </a-select>
+            <small class="npc-role-hint">
+              该密室共有{{ escapeRoomNpcRoles.length }}个NPC角色可选，可根据需要选择多个角色
+            </small>
           </div>
           
           <!-- PIC Payment 改为隐藏的文本字段 -->
@@ -601,6 +618,9 @@ const loadingHosts = ref(false)
 const submitting = ref(false)
 const gameHosts = ref([])
 
+// 🆕 密室NPC角色相关数据
+const escapeRoomNpcRoles = ref([])
+
 // 相机相关
 const cameraVisible = ref(false)
 const cameraLoading = ref(false)
@@ -619,7 +639,6 @@ const formData = reactive({
   player_count: null,
   customer_name: '',
   customer_phone: '',
-  language: '',
   game_host_id: null,
   pic_id: null,
   pic_payment: '',
@@ -634,6 +653,8 @@ const formData = reactive({
   is_group_booking: false,
   include_cctv: false,
   include_photos: false,
+  // 🆕 密室NPC角色字段
+  escape_room_npc_roles: [],
   // 🆕 新增支付相关字段
   status: 'confirmed', // 默认为已确认
   unit_price: 0, // 单价
@@ -671,6 +692,9 @@ const initForm = () => {
   }
   // 计算初始总金额
   calculateTotalAmount()
+  
+  // 🆕 加载密室NPC角色
+  loadEscapeRoomNpcRoles()
 }
 
 const loadGameHosts = async () => {
@@ -685,6 +709,59 @@ const loadGameHosts = async () => {
     message.error('加载Game Host失败')
   } finally {
     loadingHosts.value = false
+  }
+}
+
+// 🆕 加载密室NPC角色
+const loadEscapeRoomNpcRoles = async () => {
+  // 只有密室项目才需要加载NPC角色
+  if (props.bookingData.item_type !== 'escape_room') {
+    escapeRoomNpcRoles.value = []
+    return
+  }
+  
+  try {
+    let npcRoles = []
+    
+    // 🆕 优先使用从BookingView传递过来的item_info中的NPC角色信息
+    if (props.bookingData.item_info && props.bookingData.item_info.npc_roles) {
+      if (typeof props.bookingData.item_info.npc_roles === 'string') {
+        try {
+          npcRoles = JSON.parse(props.bookingData.item_info.npc_roles)
+        } catch (e) {
+          console.warn('解析预检查NPC角色失败:', e)
+        }
+      } else if (Array.isArray(props.bookingData.item_info.npc_roles)) {
+        npcRoles = props.bookingData.item_info.npc_roles
+      }
+      
+      escapeRoomNpcRoles.value = npcRoles || []
+      console.log('从预检查获取密室NPC角色:', escapeRoomNpcRoles.value)
+      return
+    }
+    
+    // 如果没有预检查数据，则从API获取密室详情
+    const escapeRoomAPI = await import('@/api/escapeRoom')
+    const response = await escapeRoomAPI.getEscapeRoomById(props.bookingData.item_id)
+    
+    // 解析NPC角色数据
+    if (response.data && response.data.npc_roles) {
+      if (typeof response.data.npc_roles === 'string') {
+        try {
+          npcRoles = JSON.parse(response.data.npc_roles)
+        } catch (e) {
+          console.warn('解析API NPC角色失败:', e)
+        }
+      } else if (Array.isArray(response.data.npc_roles)) {
+        npcRoles = response.data.npc_roles
+      }
+    }
+    
+    escapeRoomNpcRoles.value = npcRoles || []
+    console.log('从API获取密室NPC角色:', escapeRoomNpcRoles.value)
+  } catch (error) {
+    console.error('加载密室NPC角色失败:', error)
+    escapeRoomNpcRoles.value = []
   }
 }
 
@@ -719,6 +796,13 @@ const filterOption = (input, option) => {
   }
   
   return false
+}
+
+// 🆕 NPC角色过滤方法
+const filterNpcOption = (input, option) => {
+  const roleText = option.value || ''
+  const searchText = input.toLowerCase()
+  return roleText.toLowerCase().includes(searchText)
 }
 
 // 🆕 自动计算总金额
@@ -900,11 +984,6 @@ const validateForm = () => {
     return false
   }
   
-  if (!formData.language) {
-    message.error('请选择客户语言')
-    return false
-  }
-  
   if (!formData.game_host_id) {
     message.error('请选择Game Host')
     return false
@@ -958,17 +1037,8 @@ const handleSubmit = async () => {
       uploadedImages = await uploadPaymentImages()
     }
     
-    // 🆕 语言值映射：将前端的中文语言值转换为后端期望的值
-    const languageMapping = {
-      '中文': 'CN',
-      '英语': 'EN', 
-      '印尼语': 'IND',
-      'CN': 'CN',
-      'EN': 'EN',
-      'IND': 'IND'
-    }
-    
-    const mappedLanguage = languageMapping[formData.language] || formData.language
+    // 使用默认语言（印尼语）
+    const defaultLanguage = 'IND'
     
     // 构建订单数据
     const orderData = {
@@ -993,7 +1063,7 @@ const handleSubmit = async () => {
       customer_name: formData.customer_name,
       customer_phone: formData.customer_phone || null,
       player_count: formData.player_count,
-      language: mappedLanguage, // 🆕 使用映射后的语言值
+      language: defaultLanguage, // 使用默认语言
       
       // 业务信息
       game_host_id: formData.game_host_id,
@@ -1014,6 +1084,9 @@ const handleSubmit = async () => {
       is_group_booking: formData.is_group_booking,
       include_cctv: formData.include_cctv,
       include_photos: formData.include_photos,
+      
+      // 🆕 密室NPC角色字段
+      escape_room_npc_roles: props.bookingData.item_type === 'escape_room' ? formData.escape_room_npc_roles : null,
       
       // 🆕 新增支付字段
       unit_price: formData.unit_price,
@@ -1065,6 +1138,8 @@ const handleCancel = () => {
   })
   emit('cancel')
 }
+
+
 </script>
 
 <style scoped>
@@ -1214,6 +1289,24 @@ const handleCancel = () => {
 .staff-option .real-name {
   color: #666;
   font-size: 12px;
+}
+
+/* 🆕 NPC角色选择样式 */
+.npc-role-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.npc-role-hint {
+  color: #666;
+  font-size: 12px;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.full-width {
+  grid-column: 1 / -1;
 }
 
 /* 支付部分样式 */

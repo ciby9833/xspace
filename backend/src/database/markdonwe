@@ -1,0 +1,669 @@
+xspace=# \d company
+                                       Table "public.company"
+    Column     |           Type           | Collation | Nullable |              Default              
+---------------+--------------------------+-----------+----------+-----------------------------------
+ id            | uuid                     |           | not null | uuid_generate_v4()
+ name          | character varying(255)   |           | not null | 
+ type          | character varying(50)    |           |          | '加盟'::character varying
+ contact_name  | character varying(100)   |           |          | 
+ contact_phone | character varying(20)    |           |          | 
+ contact_email | character varying(255)   |           |          | 
+ status        | character varying(20)    |           |          | 'active'::character varying
+ created_at    | timestamp with time zone |           |          | now()
+ updated_at    | timestamp with time zone |           |          | now()
+ timezone      | character varying(50)    |           |          | 'Asia/Jakarta'::character varying
+Indexes:
+    "company_pkey" PRIMARY KEY, btree (id)
+Check constraints:
+    "company_type_check" CHECK (type::text = ANY (ARRAY['直营'::character varying, '加盟'::character varying]::text[]))
+Referenced by:
+    TABLE "departments" CONSTRAINT "departments_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    TABLE "escape_rooms" CONSTRAINT "escape_rooms_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    TABLE "order_configs" CONSTRAINT "order_configs_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    TABLE "orders" CONSTRAINT "orders_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    TABLE "roles" CONSTRAINT "roles_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    TABLE "scripts" CONSTRAINT "scripts_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    TABLE "store" CONSTRAINT "store_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    TABLE "users" CONSTRAINT "users_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+
+
+xspace=# \d departments
+                            Table "public.departments"
+   Column   |           Type           | Collation | Nullable |      Default       
+------------+--------------------------+-----------+----------+--------------------
+ id         | uuid                     |           | not null | uuid_generate_v4()
+ company_id | uuid                     |           |          | 
+ name       | character varying(100)   |           | not null | 
+ created_at | timestamp with time zone |           |          | now()
+ updated_at | timestamp with time zone |           |          | now()
+Indexes:
+    "departments_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "departments_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+
+
+
+xspace=# \d game_host_orders
+                            View "public.game_host_orders"
+          Column          |           Type           | Collation | Nullable | Default 
+--------------------------+--------------------------+-----------+----------+---------
+ id                       | uuid                     |           |          | 
+ order_type               | character varying(20)    |           |          | 
+ order_date               | date                     |           |          | 
+ weekday                  | character varying(10)    |           |          | 
+ start_time               | time without time zone   |           |          | 
+ end_time                 | time without time zone   |           |          | 
+ actual_start_time        | timestamp with time zone |           |          | 
+ actual_end_time          | timestamp with time zone |           |          | 
+ duration                 | integer                  |           |          | 
+ customer_name            | character varying(100)   |           |          | 
+ customer_phone           | character varying(20)    |           |          | 
+ player_count             | integer                  |           |          | 
+ support_player_count     | integer                  |           |          | 
+ language                 | character varying(10)    |           |          | 
+ internal_support         | boolean                  |           |          | 
+ script_id                | uuid                     |           |          | 
+ script_name              | character varying(255)   |           |          | 
+ current_script_name      | character varying(255)   |           |          | 
+ escape_room_id           | uuid                     |           |          | 
+ escape_room_name         | character varying(255)   |           |          | 
+ current_escape_room_name | character varying(255)   |           |          | 
+ room_id                  | uuid                     |           |          | 
+ room_name                | character varying(255)   |           |          | 
+ include_photos           | boolean                  |           |          | 
+ include_cctv             | boolean                  |           |          | 
+ is_group_booking         | boolean                  |           |          | 
+ status                   | character varying(20)    |           |          | 
+ game_host_notes          | text                     |           |          | 
+ notes                    | text                     |           |          | 
+ game_host_id             | uuid                     |           |          | 
+ store_id                 | uuid                     |           |          | 
+ company_id               | uuid                     |           |          | 
+ store_name               | character varying(255)   |           |          | 
+ game_host_name           | character varying(100)   |           |          | 
+ created_at               | timestamp with time zone |           |          | 
+ updated_at               | timestamp with time zone |           |          | 
+
+
+
+
+xspace=# \d escape_rooms
+                             Table "public.escape_rooms"
+       Column       |           Type           | Collation | Nullable |      Default       
+--------------------+--------------------------+-----------+----------+--------------------
+ id                 | uuid                     |           | not null | uuid_generate_v4()
+ company_id         | uuid                     |           |          | 
+ name               | character varying(255)   |           | not null | 
+ horror_level       | character varying(20)    |           | not null | 
+ price              | numeric(10,2)            |           |          | 
+ cover_images       | jsonb                    |           |          | '[]'::jsonb
+ min_players        | integer                  |           | not null | 
+ max_players        | integer                  |           | not null | 
+ duration           | integer                  |           | not null | 
+ npc_count          | integer                  |           |          | 0
+ npc_roles          | text                     |           |          | 
+ description        | text                     |           |          | 
+ props              | text                     |           |          | 
+ supported_languages| jsonb                    |           |          | '["CN"]'::jsonb
+ is_active          | boolean                  |           |          | true
+ created_at         | timestamp with time zone |           |          | now()
+ updated_at         | timestamp with time zone |           |          | now()
+Indexes:
+    "escape_rooms_pkey" PRIMARY KEY, btree (id)
+    "idx_escape_rooms_company_id" btree (company_id)
+    "idx_escape_rooms_created_at" btree (created_at)
+    "idx_escape_rooms_horror_level" btree (horror_level)
+    "idx_escape_rooms_is_active" btree (is_active)
+    "idx_escape_rooms_supported_languages" gin (supported_languages)
+Check constraints:
+    "escape_rooms_check" CHECK (max_players >= min_players)
+    "escape_rooms_duration_check" CHECK (duration > 0)
+    "escape_rooms_horror_level_check" CHECK (horror_level::text = ANY (ARRAY['非恐'::character varying, '微恐'::character varying, '中恐'::character varying, '重恐'::character varying]::text[]))
+    "escape_rooms_min_players_check" CHECK (min_players >= 1)
+    "escape_rooms_npc_count_check" CHECK (npc_count >= 0)
+    "valid_player_range" CHECK (max_players >= min_players)
+Foreign-key constraints:
+    "escape_rooms_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "orders" CONSTRAINT "orders_escape_room_id_fkey" FOREIGN KEY (escape_room_id) REFERENCES escape_rooms(id) ON DELETE SET NULL
+    TABLE "store_escape_rooms" CONSTRAINT "store_escape_rooms_escape_room_id_fkey" FOREIGN KEY (escape_room_id) REFERENCES escape_rooms(id) ON DELETE CASCADE
+
+
+
+xspace=# \d order_configs
+                            Table "public.order_configs"
+    Column    |           Type           | Collation | Nullable |      Default       
+--------------+--------------------------+-----------+----------+--------------------
+ id           | uuid                     |           | not null | uuid_generate_v4()
+ company_id   | uuid                     |           |          | 
+ config_type  | character varying(50)    |           | not null | 
+ config_key   | character varying(100)   |           | not null | 
+ config_value | character varying(255)   |           | not null | 
+ is_active    | boolean                  |           |          | true
+ sort_order   | integer                  |           |          | 0
+ created_at   | timestamp with time zone |           |          | now()
+ updated_at   | timestamp with time zone |           |          | now()
+Indexes:
+    "order_configs_pkey" PRIMARY KEY, btree (id)
+    "idx_order_configs_company_type" btree (company_id, config_type)
+    "order_configs_company_id_config_type_config_key_key" UNIQUE CONSTRAINT, btree (company_id, config_type, config_key)
+Check constraints:
+    "order_configs_config_type_check" CHECK (config_type::text = ANY (ARRAY['game_host'::character varying, 'npc'::character varying, 'promo'::character varying, 'pic'::character varying, 'pic_payment'::character varying, 'booking_type'::character varying, 'payment_method'::character varying]::text[]))
+Foreign-key constraints:
+    "order_configs_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+
+
+
+xspace=# \d order_images
+                            Table "public.order_images"
+   Column   |           Type           | Collation | Nullable |      Default       
+------------+--------------------------+-----------+----------+--------------------
+ id         | uuid                     |           | not null | uuid_generate_v4()
+ order_id   | uuid                     |           |          | 
+ image_type | character varying(20)    |           | not null | 
+ image_url  | character varying(500)   |           | not null | 
+ image_name | character varying(255)   |           |          | 
+ sort_order | integer                  |           |          | 0
+ created_at | timestamp with time zone |           |          | now()
+ updated_at | timestamp with time zone |           |          | now()
+Indexes:
+    "order_images_pkey" PRIMARY KEY, btree (id)
+    "idx_order_images_order_id" btree (order_id)
+    "idx_order_images_type" btree (image_type)
+Check constraints:
+    "order_images_image_type_check" CHECK (image_type::text = ANY (ARRAY['proof'::character varying, 'other'::character varying]::text[]))
+Foreign-key constraints:
+    "order_images_order_id_fkey" FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+
+
+
+xspace=# \d orders
+                                         Table "public.orders"
+        Column        |           Type           | Collation | Nullable |           Default            
+----------------------+--------------------------+-----------+----------+------------------------------
+ id                   | uuid                     |           | not null | uuid_generate_v4()
+ company_id           | uuid                     |           |          | 
+ store_id             | uuid                     |           |          | 
+ room_id              | uuid                     |           |          | 
+ order_type           | character varying(20)    |           | not null | 
+ order_date           | date                     |           | not null | 
+ weekday              | character varying(10)    |           | not null | 
+ language             | character varying(10)    |           | not null | 
+ start_time           | time without time zone   |           | not null | 
+ end_time             | time without time zone   |           | not null | 
+ duration             | integer                  |           |          | 
+ customer_name        | character varying(100)   |           | not null | 
+ customer_phone       | character varying(20)    |           |          | 
+ player_count         | integer                  |           | not null | 
+ internal_support     | boolean                  |           |          | false
+ script_id            | uuid                     |           |          | 
+ script_name          | character varying(255)   |           |          | 
+ game_host_id         | uuid                     |           |          | 
+ npc_id               | uuid                     |           |          | 
+ escape_room_id       | uuid                     |           |          | 
+ escape_room_name     | character varying(255)   |           |          | 
+ is_group_booking     | boolean                  |           |          | false
+ include_photos       | boolean                  |           |          | false
+ include_cctv         | boolean                  |           |          | false
+ booking_type         | character varying(50)    |           | not null | 
+ is_free              | boolean                  |           |          | false
+ unit_price           | numeric(15,2)            |           |          | 
+ total_amount         | numeric(15,2)            |           | not null | 
+ payment_status       | character varying(20)    |           | not null | 
+ payment_date         | date                     |           |          | 
+ payment_method       | character varying(50)    |           |          | 
+ promo_code           | character varying(100)   |           |          | 
+ promo_quantity       | integer                  |           |          | 0
+ promo_discount       | numeric(15,2)            |           |          | 0
+ pic_id               | uuid                     |           |          | 
+ pic_payment_id       | uuid                     |           |          | 
+ notes                | text                     |           |          | 
+ status               | character varying(20)    |           |          | 'pending'::character varying
+ is_active            | boolean                  |           |          | true
+ created_at           | timestamp with time zone |           |          | now()
+ updated_at           | timestamp with time zone |           |          | now()
+ created_by           | uuid                     |           |          | 
+ updated_by           | uuid                     |           |          | 
+ pic_payment          | character varying(100)   |           |          | 
+ support_player_count | integer                  |           |          | 0
+ actual_start_time    | timestamp with time zone |           |          | 
+ actual_end_time      | timestamp with time zone |           |          | 
+ game_host_notes      | text                     |           |          | 
+ original_price       | numeric(15,2)            |           |          | 0
+ discount_price       | numeric(15,2)            |           |          | 0
+ discount_amount      | numeric(15,2)            |           |          | 0
+ prepaid_amount       | numeric(15,2)            |           |          | 0
+ remaining_amount     | numeric(15,2)            |           |          | 0
+ tax_amount           | numeric(15,2)            |           |          | 0
+ service_fee          | numeric(15,2)            |           |          | 0
+ manual_discount      | numeric(15,2)            |           |          | 0
+ activity_discount    | numeric(15,2)            |           |          | 0
+ member_discount      | numeric(15,2)            |           |          | 0
+ package_discount     | numeric(15,2)            |           |          | 0
+ refund_amount        | numeric(15,2)            |           |          | 0
+ refund_reason        | text                     |           |          | 
+ refund_date          | date                     |           |          | 
+Indexes:
+    "orders_pkey" PRIMARY KEY, btree (id)
+    "idx_orders_actual_end_time" btree (actual_end_time)
+    "idx_orders_actual_start_time" btree (actual_start_time)
+    "idx_orders_actual_times" btree (actual_start_time, actual_end_time)
+    "idx_orders_booking_type" btree (booking_type)
+    "idx_orders_company_store" btree (company_id, store_id)
+    "idx_orders_created_at" btree (created_at)
+    "idx_orders_customer_phone" btree (customer_phone)
+    "idx_orders_date_type" btree (order_date, order_type)
+    "idx_orders_discount_amount" btree (discount_amount)
+    "idx_orders_game_host_date" btree (game_host_id, order_date)
+    "idx_orders_game_host_id" btree (game_host_id)
+    "idx_orders_game_host_status" btree (game_host_id, status)
+    "idx_orders_original_price" btree (original_price)
+    "idx_orders_payment_status" btree (payment_status)
+    "idx_orders_prepaid_amount" btree (prepaid_amount)
+    "idx_orders_refund_amount" btree (refund_amount)
+    "idx_orders_refund_date" btree (refund_date)
+    "idx_orders_remaining_amount" btree (remaining_amount)
+    "idx_orders_status" btree (status)
+    "idx_orders_support_count" btree (support_player_count)
+Check constraints:
+    "orders_booking_type_check" CHECK (booking_type::text = ANY (ARRAY['Booking'::character varying, 'Walk In'::character varying, 'Traveloka'::character varying, 'Tiket.com'::character varying, 'Gamehost/Staff Booking'::character varying, 'MyValue（Gramedia）'::character varying, 'Promo'::character varying, 'Group Booking'::character varying, 'Online Booking'::character varying, 'Phone Booking'::character varying]::text[]))
+    "orders_language_check" CHECK (language::text = ANY (ARRAY['CN'::character varying, 'EN'::character varying, 'IND'::character varying]::text[]))
+    "orders_order_type_check" CHECK (order_type::text = ANY (ARRAY['剧本杀'::character varying, '密室'::character varying]::text[]))
+    "orders_payment_method_check" CHECK (payment_method::text = ANY (ARRAY['Bank Transfer'::character varying, 'QR BCA'::character varying, 'DEBIT'::character varying, 'CC'::character varying]::text[]))
+    "orders_payment_status_check" CHECK (payment_status::text = ANY (ARRAY['FULL'::character varying, 'Not Yet'::character varying, 'DP'::character varying, 'Free'::character varying]::text[]))
+    "orders_player_count_check" CHECK (player_count > 0)
+    "orders_status_check" CHECK (status::text = ANY (ARRAY['pending'::character varying, 'confirmed'::character varying, 'in_progress'::character varying, 'completed'::character varying, 'cancelled'::character varying, 'refunded'::character varying, 'partially_refunded'::character varying, 'no_show'::character varying, 'rescheduled'::character varying]::text[]))
+    "orders_support_player_count_check" CHECK (support_player_count >= 0)
+Foreign-key constraints:
+    "orders_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    "orders_created_by_fkey" FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    "orders_escape_room_id_fkey" FOREIGN KEY (escape_room_id) REFERENCES escape_rooms(id) ON DELETE SET NULL
+    "orders_game_host_id_fkey" FOREIGN KEY (game_host_id) REFERENCES users(id) ON DELETE SET NULL
+    "orders_npc_id_fkey" FOREIGN KEY (npc_id) REFERENCES users(id) ON DELETE SET NULL
+    "orders_pic_id_fkey" FOREIGN KEY (pic_id) REFERENCES users(id) ON DELETE SET NULL
+    "orders_pic_payment_id_fkey" FOREIGN KEY (pic_payment_id) REFERENCES users(id) ON DELETE SET NULL
+    "orders_room_id_fkey" FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE SET NULL
+    "orders_script_id_fkey" FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE SET NULL
+    "orders_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+    "orders_updated_by_fkey" FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+Referenced by:
+    TABLE "order_images" CONSTRAINT "order_images_order_id_fkey" FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+Triggers:
+    trigger_calculate_order_amounts BEFORE INSERT OR UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION calculate_order_amounts()
+    trigger_update_order_timestamp BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION update_order_timestamp()
+
+
+
+xspace=# \d permission_modules
+                         Table "public.permission_modules"
+    Column    |           Type           | Collation | Nullable |      Default      
+--------------+--------------------------+-----------+----------+-------------------
+ id           | uuid                     |           | not null | gen_random_uuid()
+ name         | character varying(100)   |           | not null | 
+ display_name | character varying(100)   |           | not null | 
+ description  | text                     |           |          | 
+ sort_order   | integer                  |           |          | 0
+ is_active    | boolean                  |           |          | true
+ created_at   | timestamp with time zone |           |          | now()
+ updated_at   | timestamp with time zone |           |          | now()
+Indexes:
+    "permission_modules_pkey" PRIMARY KEY, btree (id)
+    "permission_modules_name_key" UNIQUE CONSTRAINT, btree (name)
+Referenced by:
+    TABLE "permissions" CONSTRAINT "permissions_module_id_fkey" FOREIGN KEY (module_id) REFERENCES permission_modules(id) ON DELETE CASCADE
+
+
+xspace=# \d permissions
+                              Table "public.permissions"
+     Column     |           Type           | Collation | Nullable |      Default      
+----------------+--------------------------+-----------+----------+-------------------
+ id             | uuid                     |           | not null | gen_random_uuid()
+ module_id      | uuid                     |           |          | 
+ name           | character varying(100)   |           | not null | 
+ display_name   | character varying(100)   |           | not null | 
+ description    | text                     |           |          | 
+ permission_key | character varying(100)   |           | not null | 
+ sort_order     | integer                  |           |          | 0
+ is_active      | boolean                  |           |          | true
+ created_at     | timestamp with time zone |           |          | now()
+ updated_at     | timestamp with time zone |           |          | now()
+Indexes:
+    "permissions_pkey" PRIMARY KEY, btree (id)
+    "idx_permissions_module_id" btree (module_id)
+    "permissions_permission_key_key" UNIQUE CONSTRAINT, btree (permission_key)
+Foreign-key constraints:
+    "permissions_module_id_fkey" FOREIGN KEY (module_id) REFERENCES permission_modules(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "role_permission_assignments" CONSTRAINT "role_permission_assignments_permission_id_fkey" FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+
+
+
+
+xspace=# \d role_permission_assignments
+                     Table "public.role_permission_assignments"
+    Column     |           Type           | Collation | Nullable |      Default      
+---------------+--------------------------+-----------+----------+-------------------
+ id            | uuid                     |           | not null | gen_random_uuid()
+ role_id       | uuid                     |           |          | 
+ permission_id | uuid                     |           |          | 
+ granted       | boolean                  |           |          | true
+ created_at    | timestamp with time zone |           |          | now()
+Indexes:
+    "role_permission_assignments_pkey" PRIMARY KEY, btree (id)
+    "idx_role_permissions_permission_id" btree (permission_id)
+    "idx_role_permissions_role_id" btree (role_id)
+    "role_permission_assignments_role_id_permission_id_key" UNIQUE CONSTRAINT, btree (role_id, permission_id)
+Foreign-key constraints:
+    "role_permission_assignments_permission_id_fkey" FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+    "role_permission_assignments_role_id_fkey" FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+
+
+
+
+xspace=# \d role_permissions
+                            Table "public.role_permissions"
+     Column      |           Type           | Collation | Nullable |      Default       
+-----------------+--------------------------+-----------+----------+--------------------
+ id              | uuid                     |           | not null | uuid_generate_v4()
+ role            | character varying(50)    |           | not null | 
+ permission_key  | character varying(100)   |           | not null | 
+ permission_name | character varying(100)   |           | not null | 
+ description     | text                     |           |          | 
+ created_at      | timestamp with time zone |           |          | now()
+Indexes:
+    "role_permissions_pkey" PRIMARY KEY, btree (id)
+    "uk_role_permission" UNIQUE CONSTRAINT, btree (role, permission_key)
+    "unique_role_permission" UNIQUE CONSTRAINT, btree (role, permission_key)
+
+
+
+
+xspace=# \d roles
+                                     Table "public.roles"
+     Column     |           Type           | Collation | Nullable |          Default           
+----------------+--------------------------+-----------+----------+----------------------------
+ id             | uuid                     |           | not null | gen_random_uuid()
+ company_id     | uuid                     |           |          | 
+ name           | character varying(100)   |           | not null | 
+ display_name   | character varying(100)   |           | not null | 
+ description    | text                     |           |          | 
+ is_system_role | boolean                  |           |          | false
+ is_active      | boolean                  |           |          | true
+ created_at     | timestamp with time zone |           |          | now()
+ updated_at     | timestamp with time zone |           |          | now()
+ role_level     | character varying(20)    |           |          | 'store'::character varying
+ created_by     | uuid                     |           |          | 
+Indexes:
+    "roles_pkey" PRIMARY KEY, btree (id)
+    "idx_roles_company_id" btree (company_id)
+    "idx_roles_company_level" btree (company_id, role_level)
+    "idx_roles_created_by" btree (created_by)
+    "idx_roles_level" btree (role_level)
+    "roles_company_level_name_unique" UNIQUE CONSTRAINT, btree (company_id, role_level, name)
+Check constraints:
+    "roles_role_level_check" CHECK (role_level::text = ANY (ARRAY['platform'::character varying, 'company'::character varying, 'store'::character varying]::text[]))
+Foreign-key constraints:
+    "roles_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    "roles_created_by_fkey" FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+Referenced by:
+    TABLE "role_permission_assignments" CONSTRAINT "role_permission_assignments_role_id_fkey" FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+    TABLE "users" CONSTRAINT "users_role_id_fkey" FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE SET NULL
+
+
+
+
+xspace=# \d room_images
+                            Table "public.room_images"
+   Column   |           Type           | Collation | Nullable |      Default       
+------------+--------------------------+-----------+----------+--------------------
+ id         | uuid                     |           | not null | uuid_generate_v4()
+ room_id    | uuid                     |           |          | 
+ image_url  | character varying(500)   |           | not null | 
+ image_name | character varying(255)   |           |          | 
+ sort_order | integer                  |           |          | 0
+ is_primary | boolean                  |           |          | false
+ created_at | timestamp with time zone |           |          | now()
+ updated_at | timestamp with time zone |           |          | now()
+Indexes:
+    "room_images_pkey" PRIMARY KEY, btree (id)
+    "idx_room_images_room_id" btree (room_id)
+    "idx_room_images_sort_order" btree (sort_order)
+Foreign-key constraints:
+    "room_images_room_id_fkey" FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+
+
+
+
+xspace=# \d rooms
+                                   Table "public.rooms"
+   Column    |           Type           | Collation | Nullable |          Default          
+-------------+--------------------------+-----------+----------+---------------------------
+ id          | uuid                     |           | not null | uuid_generate_v4()
+ store_id    | uuid                     |           |          | 
+ name        | character varying(255)   |           | not null | 
+ room_type   | character varying(20)    |           | not null | 
+ capacity    | integer                  |           | not null | 
+ status      | character varying(20)    |           |          | '正常'::character varying
+ images      | jsonb                    |           |          | '[]'::jsonb
+ description | text                     |           |          | 
+ equipment   | text                     |           |          | 
+ notes       | text                     |           |          | 
+ is_active   | boolean                  |           |          | true
+ created_at  | timestamp with time zone |           |          | now()
+ updated_at  | timestamp with time zone |           |          | now()
+Indexes:
+    "rooms_pkey" PRIMARY KEY, btree (id)
+    "idx_rooms_room_type" btree (room_type)
+    "idx_rooms_status" btree (status)
+    "idx_rooms_store_id" btree (store_id)
+Check constraints:
+    "rooms_capacity_check" CHECK (capacity > 0)
+    "rooms_room_type_check" CHECK (room_type::text = ANY (ARRAY['剧本杀'::character varying, '密室'::character varying, '混合'::character varying]::text[]))
+    "rooms_status_check" CHECK (status::text = ANY (ARRAY['正常'::character varying, '维护'::character varying, '关闭'::character varying]::text[]))
+Foreign-key constraints:
+    "rooms_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "orders" CONSTRAINT "orders_room_id_fkey" FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE SET NULL
+    TABLE "room_images" CONSTRAINT "room_images_room_id_fkey" FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+
+
+
+
+
+
+xspace=# \d scripts
+                               Table "public.scripts"
+       Column       |           Type           | Collation | Nullable |      Default      
+--------------------+--------------------------+-----------+----------+-------------------
+ id                 | uuid                     |           | not null | gen_random_uuid()
+ company_id         | uuid                     |           |          | 
+ name               | character varying(255)   |           | not null | 
+ type               | character varying(50)    |           | not null | 
+ description        | text                     |           |          | 
+ min_players        | integer                  |           | not null | 
+ max_players        | integer                  |           | not null | 
+ duration           | integer                  |           | not null | 
+ difficulty         | character varying(20)    |           |          | 
+ price              | numeric(10,2)            |           |          | 
+ cover_image        | character varying(500)   |           |          | 
+ tags               | jsonb                    |           |          | 
+ requirements       | text                     |           |          | 
+ supported_languages| jsonb                    |           |          | '["CN"]'::jsonb
+ is_active          | boolean                  |           |          | true
+ created_at         | timestamp with time zone |           |          | now()
+ updated_at         | timestamp with time zone |           |          | now()
+ background         | character varying(50)    |           |          | 
+ props              | text                     |           |          | 
+ images             | jsonb                    |           |          | '[]'::jsonb
+Indexes:
+    "scripts_pkey" PRIMARY KEY, btree (id)
+    "idx_scripts_background" btree (background)
+    "idx_scripts_company_id" btree (company_id)
+    "idx_scripts_type" btree (type)
+    "idx_scripts_supported_languages" gin (supported_languages)
+Check constraints:
+    "scripts_background_check" CHECK (background::text = ANY (ARRAY['现代'::character varying, '中国古代'::character varying, '欧式'::character varying, '日式'::character varying, '架空'::character varying]::text[]))
+    "scripts_difficulty_check" CHECK (difficulty::text = ANY (ARRAY['新手'::character varying, '进阶'::character varying, '硬核'::character varying]::text[]))
+    "scripts_type_check" CHECK (type::text = ANY (ARRAY['欢乐'::character varying, '惊悚'::character varying, '推理'::character varying, '恐怖'::character varying, '情感'::character varying, '策略'::character varying, '血染钟楼'::character varying, '桌游'::character varying]::text[]))
+Foreign-key constraints:
+    "scripts_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "orders" CONSTRAINT "orders_script_id_fkey" FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE SET NULL
+    TABLE "store_scripts" CONSTRAINT "store_scripts_script_id_fkey" FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
+
+
+
+xspace=# \d store
+                                         Table "public.store"
+     Column     |           Type           | Collation | Nullable |              Default              
+----------------+--------------------------+-----------+----------+-----------------------------------
+ id             | uuid                     |           | not null | uuid_generate_v4()
+ company_id     | uuid                     |           |          | 
+ name           | character varying(255)   |           | not null | 
+ address        | text                     |           |          | 
+ business_hours | jsonb                    |           |          | 
+ is_active      | boolean                  |           |          | true
+ created_at     | timestamp with time zone |           |          | now()
+ updated_at     | timestamp with time zone |           |          | now()
+ timezone       | character varying(50)    |           |          | 'Asia/Jakarta'::character varying
+Indexes:
+    "store_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "store_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "orders" CONSTRAINT "orders_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+    TABLE "rooms" CONSTRAINT "rooms_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+    TABLE "store_escape_rooms" CONSTRAINT "store_escape_rooms_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+    TABLE "store_scripts" CONSTRAINT "store_scripts_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+    TABLE "user_stores" CONSTRAINT "user_stores_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+    TABLE "users" CONSTRAINT "users_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE SET NULL
+
+
+
+
+xspace=# \d store_escape_rooms
+                           Table "public.store_escape_rooms"
+     Column     |           Type           | Collation | Nullable |      Default       
+----------------+--------------------------+-----------+----------+--------------------
+ id             | uuid                     |           | not null | uuid_generate_v4()
+ store_id       | uuid                     |           |          | 
+ escape_room_id | uuid                     |           |          | 
+ store_price    | numeric(10,2)            |           |          | 
+ is_available   | boolean                  |           |          | true
+ sort_order     | integer                  |           |          | 0
+ created_at     | timestamp with time zone |           |          | now()
+ updated_at     | timestamp with time zone |           |          | now()
+Indexes:
+    "store_escape_rooms_pkey" PRIMARY KEY, btree (id)
+    "idx_store_escape_rooms_escape_room_id" btree (escape_room_id)
+    "idx_store_escape_rooms_is_available" btree (is_available)
+    "idx_store_escape_rooms_store_id" btree (store_id)
+    "store_escape_rooms_store_id_escape_room_id_key" UNIQUE CONSTRAINT, btree (store_id, escape_room_id)
+Foreign-key constraints:
+    "store_escape_rooms_escape_room_id_fkey" FOREIGN KEY (escape_room_id) REFERENCES escape_rooms(id) ON DELETE CASCADE
+    "store_escape_rooms_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+
+
+
+xspace=# \d store_scripts
+                            Table "public.store_scripts"
+    Column    |           Type           | Collation | Nullable |      Default      
+--------------+--------------------------+-----------+----------+-------------------
+ id           | uuid                     |           | not null | gen_random_uuid()
+ store_id     | uuid                     |           |          | 
+ script_id    | uuid                     |           |          | 
+ store_price  | numeric(10,2)            |           |          | 
+ is_available | boolean                  |           |          | true
+ sort_order   | integer                  |           |          | 0
+ created_at   | timestamp with time zone |           |          | now()
+Indexes:
+    "store_scripts_pkey" PRIMARY KEY, btree (id)
+    "idx_store_scripts_store_id" btree (store_id)
+    "store_scripts_store_id_script_id_key" UNIQUE CONSTRAINT, btree (store_id, script_id)
+Foreign-key constraints:
+    "store_scripts_script_id_fkey" FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE
+    "store_scripts_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+
+
+
+
+xspace=# \d user_stores
+                            Table "public.user_stores"
+   Column   |           Type           | Collation | Nullable |      Default       
+------------+--------------------------+-----------+----------+--------------------
+ id         | uuid                     |           | not null | uuid_generate_v4()
+ user_id    | uuid                     |           |          | 
+ store_id   | uuid                     |           |          | 
+ is_primary | boolean                  |           |          | false
+ created_at | timestamp with time zone |           |          | now()
+ updated_at | timestamp with time zone |           |          | now()
+Indexes:
+    "user_stores_pkey" PRIMARY KEY, btree (id)
+    "idx_user_stores_store_id" btree (store_id)
+    "idx_user_stores_user_id" btree (user_id)
+    "user_stores_user_id_store_id_key" UNIQUE CONSTRAINT, btree (user_id, store_id)
+Foreign-key constraints:
+    "user_stores_store_id_fkey" FOREIGN KEY (store_id) REFERENCES store(id) ON DELETE CASCADE
+    "user_stores_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+
+xspace=# \d users
+                                        Table "public.users"
+    Column     |           Type           | Collation | Nullable |              Default              
+---------------+--------------------------+-----------+----------+-----------------------------------
+ id            | uuid                     |           | not null | uuid_generate_v4()
+ company_id    | uuid                     |           |          | 
+ department_id | uuid                     |           |          | 
+ email         | character varying(255)   |           | not null | 
+ phone         | character varying(20)    |           |          | 
+ password_hash | character varying(255)   |           |          | 
+ name          | character varying(100)   |           |          | 
+ position      | character varying(100)   |           |          | 
+ account_level | character varying(20)    |           |          | 'store'::character varying
+ is_active     | boolean                  |           |          | true
+ timezone      | character varying(50)    |           |          | 'Asia/Jakarta'::character varying
+ last_login_at | timestamp with time zone |           |          | 
+ created_at    | timestamp with time zone |           |          | now()
+ updated_at    | timestamp with time zone |           |          | now()
+ role_id       | uuid                     |           |          | 
+Indexes:
+    "users_pkey" PRIMARY KEY, btree (id)
+    "idx_users_account_level" btree (account_level)
+    "idx_users_company_id" btree (company_id)
+    "idx_users_role_id" btree (role_id)
+    "users_email_key" UNIQUE CONSTRAINT, btree (email)
+Check constraints:
+    "users_account_level_check" CHECK (account_level::text = ANY (ARRAY['platform'::character varying, 'company'::character varying, 'store'::character varying]::text[]))
+    "users_position_check" CHECK ("position"::text = ANY (ARRAY['Store Manager'::character varying, 'Customer Support'::character varying, 'Game Host'::character varying, 'Supervisor'::character varying, 'Finance'::character varying, 'Finance Manager'::character varying, 'Person in Charge'::character varying]::text[]))
+Foreign-key constraints:
+    "users_company_id_fkey" FOREIGN KEY (company_id) REFERENCES company(id) ON DELETE CASCADE
+    "users_department_id_fkey" FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+    "users_role_id_fkey" FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE SET NULL
+Referenced by:
+    TABLE "orders" CONSTRAINT "orders_created_by_fkey" FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "orders" CONSTRAINT "orders_game_host_id_fkey" FOREIGN KEY (game_host_id) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "orders" CONSTRAINT "orders_npc_id_fkey" FOREIGN KEY (npc_id) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "orders" CONSTRAINT "orders_pic_id_fkey" FOREIGN KEY (pic_id) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "orders" CONSTRAINT "orders_pic_payment_id_fkey" FOREIGN KEY (pic_payment_id) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "orders" CONSTRAINT "orders_updated_by_fkey" FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "roles" CONSTRAINT "roles_created_by_fkey" FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "user_stores" CONSTRAINT "user_stores_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

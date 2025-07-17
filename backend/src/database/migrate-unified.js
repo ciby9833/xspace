@@ -1,4 +1,4 @@
-// 统一迁移 - 账户级别系统
+// 统一迁移 - 账户级别系统 node src/database/migrate-unified.js
 require('dotenv').config();
 
 const pool = require('./connection');

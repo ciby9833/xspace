@@ -1,3 +1,5 @@
+// Game Host权限添加 - node src/database/add-game-host-permissions.js
+require('dotenv').config();
 const pool = require('./connection');
 
 async function addGameHostPermissions() {
@@ -20,13 +22,13 @@ async function addGameHostPermissions() {
     const moduleId = moduleResult.rows[0].id;
     console.log('✅ Game Host管理模块已添加，ID:', moduleId);
     
-    // 2. 添加Game Host权限项
+    // 2. 添加Game Host权限项（与permissions.js配置保持一致）
     const permissions = [
-      { name: 'view', display_name: '查看自己的订单', key: 'game_host.view' },
+      { name: 'view', display_name: '查看Game Host订单', key: 'game_host.view' },
       { name: 'start', display_name: '开始游戏', key: 'game_host.start' },
       { name: 'complete', display_name: '完成游戏', key: 'game_host.complete' },
       { name: 'update', display_name: '更新订单信息', key: 'game_host.update' },
-      { name: 'manage', display_name: 'Game Host订单管理', key: 'game_host.manage' }
+      { name: 'manage', display_name: 'Game Host管理', key: 'game_host.manage' }
     ];
     
     for (const perm of permissions) {

@@ -122,6 +122,16 @@
               <div class="escape-room-details">
                 <div class="escape-room-name" @click="viewEscapeRoom(record)">
                   {{ record.name }}
+                  <div class="language-tags">
+                    <a-tag 
+                      v-for="lang in getSupportedLanguages(record)" 
+                      :key="lang"
+                      color="blue"
+                      size="small"
+                    >
+                      {{ getLanguageLabel(lang) }}
+                    </a-tag>
+                  </div>
                 </div>
                 <div class="escape-room-meta">
                   <a-tag :color="getHorrorLevelColor(record.horror_level)" size="small">
@@ -452,6 +462,31 @@ const getNpcRoles = (escapeRoom) => {
   }
 }
 
+// 获取支持语言数组
+const getSupportedLanguages = (escapeRoom) => {
+  if (!escapeRoom.supported_languages) return ['IND'] // 默认印尼语
+  
+  if (Array.isArray(escapeRoom.supported_languages)) {
+    return escapeRoom.supported_languages
+  }
+  
+  try {
+    return JSON.parse(escapeRoom.supported_languages)
+  } catch (e) {
+    return ['IND'] // 默认印尼语
+  }
+}
+
+// 获取语言标签
+const getLanguageLabel = (lang) => {
+  const labels = {
+    'IND': '印尼语',
+    'CN': '中文',
+    'EN': '英文'
+  }
+  return labels[lang] || lang
+}
+
 // 获取图片URL
 const getImageUrl = (imageUrl) => {
   if (!imageUrl) return ''
@@ -756,6 +791,13 @@ onMounted(() => {
 
 .escape-room-name:hover {
   text-decoration: underline;
+}
+
+.escape-room-name .language-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .escape-room-meta {

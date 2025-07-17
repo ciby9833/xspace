@@ -1,6 +1,7 @@
 const BaseService = require('../core/BaseService');
 const companyModel = require('../models/companyModel');
 const userModel = require('../models/userModel');
+const permissionModel = require('../models/permissionModel');
 const { hashPassword } = require('../utils/auth');
 const PermissionChecker = require('../utils/permissions');
 
@@ -45,6 +46,36 @@ class CompanyService extends BaseService {
       contact_email
     });
 
+    // 创建公司级管理员角色
+    const adminRole = await permissionModel.createRole(company.id, {
+      name: 'admin',
+      display_name: '公司管理员',
+      description: '公司级管理员，拥有本公司所有权限',
+      role_level: 'company'
+    }, user.id);
+
+    // 为管理员角色分配所有权限
+    const allPermissions = await permissionModel.getAllPermissionsGrouped();
+    const permissionIds = [];
+    allPermissions.forEach(module => {
+      if (module.permissions) {
+        module.permissions.forEach(perm => {
+          // 只分配公司级和门店级权限，不分配平台级权限
+          if (perm.permission_key !== 'company.create' && 
+              perm.permission_key !== 'company.delete' && 
+              perm.permission_key !== 'system.manage' &&
+              perm.permission_key !== 'system.permission' &&
+              perm.permission_key !== 'system.role') {
+            permissionIds.push(perm.id);
+          }
+        });
+      }
+    });
+
+    if (permissionIds.length > 0) {
+      await permissionModel.assignPermissionsToRole(adminRole.id, permissionIds);
+    }
+
     // 创建公司级主账号（admin角色，company账户层级）
     const hashedPassword = await hashPassword(admin_password);
     const mainAccount = await userModel.create({
@@ -53,6 +84,7 @@ class CompanyService extends BaseService {
       email: admin_email,
       password_hash: hashedPassword,
       role: 'admin',
+      role_id: adminRole.id,
       account_level: 'company'  // 确保是公司级账户
     });
 

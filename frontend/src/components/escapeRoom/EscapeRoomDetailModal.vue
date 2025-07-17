@@ -86,6 +86,17 @@
               <a-descriptions-item label="更新时间">
                 {{ formatDate(escapeRoomData.updated_at) }}
               </a-descriptions-item>
+              <a-descriptions-item label="支持语言">
+                <div class="language-tags">
+                  <a-tag 
+                    v-for="lang in supportedLanguages" 
+                    :key="lang"
+                    color="blue"
+                  >
+                    {{ getLanguageLabel(lang) }}
+                  </a-tag>
+                </div>
+              </a-descriptions-item>
             </a-descriptions>
 
             <!-- NPC角色 -->
@@ -294,6 +305,31 @@ const npcRoles = computed(() => {
 const storeConfigs = computed(() => {
   return storeConfigsData.value.filter(config => config !== null)
 })
+
+// 处理支持语言数据
+const supportedLanguages = computed(() => {
+  if (!props.escapeRoomData?.supported_languages) return ['IND'] // 默认印尼语
+  
+  if (Array.isArray(props.escapeRoomData.supported_languages)) {
+    return props.escapeRoomData.supported_languages
+  }
+  
+  try {
+    return JSON.parse(props.escapeRoomData.supported_languages)
+  } catch (e) {
+    return ['IND'] // 默认印尼语
+  }
+})
+
+// 获取语言标签
+const getLanguageLabel = (lang) => {
+  const labels = {
+    'IND': '印尼语',
+    'CN': '中文',
+    'EN': '英文'
+  }
+  return labels[lang] || lang
+}
 
 // 获取门店配置数据
 const fetchStoreConfigs = async (escapeRoomId) => {
@@ -551,6 +587,12 @@ const showImagePreview = (images, index) => {
 .tags-container {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.language-tags {
+  display: flex;
+  gap: 4px;
   flex-wrap: wrap;
 }
 

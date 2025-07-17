@@ -55,9 +55,15 @@ class OrderService extends BaseService {
 
     const orders = await this.model.findByCompanyId(company_id, processedFilters);
 
-    // 格式化时间字段
+    // 格式化时间字段并处理语言显示
     return orders.map(order => {
       const formatted = this.formatTimeFields(order, user.user_timezone);
+      // 🆕 处理语言显示：显示剧本/密室支持的语言
+      formatted.display_languages = this.getOrderDisplayLanguages(order);
+      // 🆕 处理密室NPC角色字段
+      formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
+      // 🆕 处理密室支持语言字段格式
+      formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
       // 确保 images 是数组
       if (formatted.images && !Array.isArray(formatted.images)) {
         formatted.images = [];
@@ -88,6 +94,9 @@ class OrderService extends BaseService {
     const processedFilters = {
       order_type: query.order_type,
       status: query.status,
+      payment_status: query.payment_status,
+      booking_type: query.booking_type,
+      language: query.language,
       start_date: query.start_date,
       end_date: query.end_date,
       customer_name: query.customer_name ? query.customer_name.trim() : undefined,
@@ -102,12 +111,102 @@ class OrderService extends BaseService {
     });
 
     const orders = await this.model.findByStoreId(storeId, processedFilters);
-    return orders.map(order => this.formatTimeFields(order, user.user_timezone));
+    return orders.map(order => {
+      const formatted = this.formatTimeFields(order, user.user_timezone);
+      // 🆕 处理语言显示：显示剧本/密室支持的语言
+      formatted.display_languages = this.getOrderDisplayLanguages(order);
+      // 🆕 处理密室NPC角色字段
+      formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
+      // 🆕 处理密室支持语言字段格式
+      formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
+      return formatted;
+    });
+  }
+
+  // 🆕 获取订单显示语言（基于剧本/密室的支持语言）
+  getOrderDisplayLanguages(order) {
+    let supportedLanguages = [];
+    
+    if (order.order_type === '剧本杀' && order.script_supported_languages) {
+      try {
+        if (typeof order.script_supported_languages === 'string') {
+          supportedLanguages = JSON.parse(order.script_supported_languages);
+        } else if (Array.isArray(order.script_supported_languages)) {
+          supportedLanguages = order.script_supported_languages;
+        }
+      } catch (e) {
+        console.warn('解析剧本语言失败:', e);
+        supportedLanguages = ['IND']; // 默认印尼语
+      }
+    } else if (order.order_type === '密室' && order.escape_room_supported_languages) {
+      try {
+        if (typeof order.escape_room_supported_languages === 'string') {
+          supportedLanguages = JSON.parse(order.escape_room_supported_languages);
+        } else if (Array.isArray(order.escape_room_supported_languages)) {
+          supportedLanguages = order.escape_room_supported_languages;
+        }
+      } catch (e) {
+        console.warn('解析密室语言失败:', e);
+        supportedLanguages = ['IND']; // 默认印尼语
+      }
+    }
+    
+    // 如果没有获取到语言信息，使用默认值
+    if (!supportedLanguages || supportedLanguages.length === 0) {
+      supportedLanguages = ['IND'];
+    }
+    
+    // 转换为中文显示
+    return supportedLanguages.map(lang => this.getLanguageText(lang));
+  }
+
+  // 🆕 解析密室NPC角色字段
+  parseEscapeRoomNpcRoles(npcRolesField) {
+    if (!npcRolesField) return [];
+    
+    // 如果已经是数组，直接返回
+    if (Array.isArray(npcRolesField)) {
+      return npcRolesField;
+    }
+    
+    // 如果是字符串，尝试解析
+    if (typeof npcRolesField === 'string') {
+      try {
+        const parsed = JSON.parse(npcRolesField);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        console.warn('解析密室NPC角色失败:', e);
+        return [];
+      }
+    }
+    
+    return [];
+  }
+
+  // 🆕 通用JSON字段解析方法
+  parseJsonField(field) {
+    if (!field) return null;
+    
+    // 如果已经是数组或对象，直接返回
+    if (Array.isArray(field) || typeof field === 'object') {
+      return field;
+    }
+    
+    // 如果是字符串，尝试解析
+    if (typeof field === 'string') {
+      try {
+        return JSON.parse(field);
+      } catch (e) {
+        console.warn('解析JSON字段失败:', e);
+        return field; // 解析失败时返回原始字符串
+      }
+    }
+    
+    return field;
   }
 
   // 获取订单详情
   async getById(orderId, user) {
-    // 检查查看权限
     await PermissionChecker.requirePermission(user, 'order.view');
 
     const { company_id } = user;
@@ -123,14 +222,22 @@ class OrderService extends BaseService {
     const order = await this.model.findById(orderId, companyId);
     
     if (!order) {
-      throw new Error('订单不存在或无权限访问');
+      return null;
     }
 
     const formatted = this.formatTimeFields(order, user.user_timezone);
-    // 处理图片数组
+    // 🆕 处理语言显示：显示剧本/密室支持的语言
+    formatted.display_languages = this.getOrderDisplayLanguages(order);
+    // 🆕 处理密室NPC角色字段
+    formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
+    // 🆕 处理密室支持语言字段格式
+    formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
+    
+    // 确保 images 是数组
     if (formatted.images && !Array.isArray(formatted.images)) {
       formatted.images = [];
     }
+    
     return formatted;
   }
 
@@ -227,6 +334,8 @@ class OrderService extends BaseService {
       // 🆕 处理其他可能的字段映射
       unit_price: data.total_amount, // 单价等于总金额
       is_free: data.free_pay === 'Free' ? true : false, // 转换Free/Pay为布尔值
+      // 🆕 密室NPC角色处理
+      escape_room_npc_roles: data.escape_room_npc_roles ? JSON.stringify(data.escape_room_npc_roles) : null,
       // 🆕 新增财务字段处理
       original_price: data.original_price || data.total_amount || 0,
       discount_price: data.discount_price || 0,
@@ -330,6 +439,10 @@ class OrderService extends BaseService {
       // 🆕 处理其他可能的字段映射
       unit_price: data.total_amount, // 单价等于总金额
       is_free: data.free_pay === 'Free' ? true : false, // 转换Free/Pay为布尔值
+      // 🆕 密室NPC角色处理
+      escape_room_npc_roles: data.escape_room_npc_roles !== undefined ? 
+        (data.escape_room_npc_roles ? JSON.stringify(data.escape_room_npc_roles) : null) : 
+        existingOrder.escape_room_npc_roles,
       // 🆕 新增财务字段处理
       original_price: data.original_price !== undefined ? data.original_price : existingOrder.original_price,
       discount_price: data.discount_price !== undefined ? data.discount_price : existingOrder.discount_price,
@@ -840,7 +953,8 @@ class OrderService extends BaseService {
             ...(filters.max_players ? { max_players: filters.max_players } : {}),
             ...(filters.min_price ? { min_price: filters.min_price } : {}),
             ...(filters.max_price ? { max_price: filters.max_price } : {}),
-            ...(filters.script_types && filters.script_types.length > 0 ? { types: filters.script_types } : {})
+            ...(filters.script_types && filters.script_types.length > 0 ? { types: filters.script_types } : {}),
+            ...(filters.languages && filters.languages.length > 0 ? { languages: filters.languages } : {})
           };
           // 添加门店筛选
           if (filters.store_id) {
@@ -892,7 +1006,8 @@ class OrderService extends BaseService {
             ...(filters.max_players ? { max_players: filters.max_players } : {}),
             ...(filters.min_price ? { min_price: filters.min_price } : {}),
             ...(filters.max_price ? { max_price: filters.max_price } : {}),
-            ...(filters.script_types && filters.script_types.length > 0 ? { types: filters.script_types } : {})
+            ...(filters.script_types && filters.script_types.length > 0 ? { types: filters.script_types } : {}),
+            ...(filters.languages && filters.languages.length > 0 ? { languages: filters.languages } : {})
           };
           // 添加门店筛选
           if (filters.store_id) {
@@ -936,7 +1051,8 @@ class OrderService extends BaseService {
             ...(filters.max_players ? { max_players: filters.max_players } : {}),
             ...(filters.min_price ? { min_price: filters.min_price } : {}),
             ...(filters.max_price ? { max_price: filters.max_price } : {}),
-            ...(filters.horror_levels && filters.horror_levels.length > 0 ? { horror_levels: filters.horror_levels } : {})
+            ...(filters.horror_levels && filters.horror_levels.length > 0 ? { horror_levels: filters.horror_levels } : {}),
+            ...(filters.languages && filters.languages.length > 0 ? { languages: filters.languages } : {})
           };
           // 添加门店筛选
           if (filters.store_id) {
@@ -988,7 +1104,8 @@ class OrderService extends BaseService {
             ...(filters.max_players ? { max_players: filters.max_players } : {}),
             ...(filters.min_price ? { min_price: filters.min_price } : {}),
             ...(filters.max_price ? { max_price: filters.max_price } : {}),
-            ...(filters.horror_levels && filters.horror_levels.length > 0 ? { horror_levels: filters.horror_levels } : {})
+            ...(filters.horror_levels && filters.horror_levels.length > 0 ? { horror_levels: filters.horror_levels } : {}),
+            ...(filters.languages && filters.languages.length > 0 ? { languages: filters.languages } : {})
           };
           // 添加门店筛选
           if (filters.store_id) {
@@ -1041,7 +1158,8 @@ class OrderService extends BaseService {
           description: script.description,
           props: script.props,
           store_count: script.store_count || 0,
-          store_names: script.store_names || []
+          store_names: script.store_names || [],
+          supported_languages: script.supported_languages || []
         });
       });
 
@@ -1062,6 +1180,41 @@ class OrderService extends BaseService {
           }
         }
 
+        // 🔧 处理密室支持语言字段，确保正确解析
+        let supportedLanguages = [];
+        if (escapeRoom.supported_languages) {
+          if (typeof escapeRoom.supported_languages === 'string') {
+            try {
+              supportedLanguages = JSON.parse(escapeRoom.supported_languages);
+            } catch (e) {
+              console.warn('密室语言JSON解析失败:', e);
+              supportedLanguages = ['IND'];
+            }
+          } else if (Array.isArray(escapeRoom.supported_languages)) {
+            supportedLanguages = escapeRoom.supported_languages;
+          }
+        }
+        
+        // 如果没有语言信息，使用默认值
+        if (!supportedLanguages || supportedLanguages.length === 0) {
+          supportedLanguages = ['IND'];
+        }
+
+        // 🔧 处理密室NPC角色字段，确保正确解析
+        let npcRoles = [];
+        if (escapeRoom.npc_roles) {
+          if (typeof escapeRoom.npc_roles === 'string') {
+            try {
+              npcRoles = JSON.parse(escapeRoom.npc_roles);
+            } catch (e) {
+              console.warn('密室NPC角色JSON解析失败:', e);
+              npcRoles = [];
+            }
+          } else if (Array.isArray(escapeRoom.npc_roles)) {
+            npcRoles = escapeRoom.npc_roles;
+          }
+        }
+
         formattedItems.push({
           id: escapeRoom.id,
           type: 'escape_room',
@@ -1074,11 +1227,12 @@ class OrderService extends BaseService {
           price: escapeRoom.store_price || escapeRoom.price,
           category: escapeRoom.horror_level,
           npc_count: escapeRoom.npc_count,
-          npc_roles: escapeRoom.npc_roles,
+          npc_roles: npcRoles,
           description: escapeRoom.description,
           props: escapeRoom.props,
           store_count: escapeRoom.store_count || 0,
-          store_names: escapeRoom.store_names || []
+          store_names: escapeRoom.store_names || [],
+          supported_languages: supportedLanguages
         });
       });
 
@@ -1508,6 +1662,8 @@ class OrderService extends BaseService {
     // 格式化数据
     const formattedOrders = orders.map(order => {
       const formatted = this.formatTimeFields(order, user.user_timezone);
+      // 🆕 处理语言显示：显示剧本/密室支持的语言
+      formatted.display_languages = this.getOrderDisplayLanguages(order);
       // 确保 images 是数组
       if (formatted.images && !Array.isArray(formatted.images)) {
         formatted.images = [];
@@ -1532,7 +1688,7 @@ class OrderService extends BaseService {
       { header: '客户姓名', key: 'customer_name', width: 15 },
       { header: '客户电话', key: 'customer_phone', width: 15 },
       { header: '玩家人数', key: 'player_count', width: 10 },
-      { header: '客户语言', key: 'language', width: 10 },
+      { header: '支持语言', key: 'display_languages', width: 15 },
       { header: '内部补位', key: 'internal_support', width: 10 },
       { header: '门店名称', key: 'store_name', width: 20 },
       { header: '房间名称', key: 'room_name', width: 15 },
@@ -1552,28 +1708,19 @@ class OrderService extends BaseService {
       { header: '优惠码', key: 'promo_code', width: 15 },
       { header: '优惠数量', key: 'promo_quantity', width: 10 },
       { header: '优惠折扣', key: 'promo_discount', width: 12 },
-      { header: '是否拼团', key: 'is_group_booking', width: 10 },
-      { header: '包含拍照', key: 'include_photos', width: 10 },
-      { header: '包含监控', key: 'include_cctv', width: 10 },
+      { header: '团体预订', key: 'is_group_booking', width: 10 },
+      { header: '包含照片', key: 'include_photos', width: 10 },
+      { header: '包含录像', key: 'include_cctv', width: 10 },
       { header: '备注', key: 'notes', width: 30 },
-      { header: '订单状态', key: 'status', width: 12 },
+      { header: '状态', key: 'status', width: 10 },
       { header: '创建时间', key: 'created_at', width: 20 },
       { header: '创建人', key: 'created_by_name', width: 15 },
       { header: '更新时间', key: 'updated_at', width: 20 },
       { header: '更新人', key: 'updated_by_name', width: 15 },
-      { header: '付款凭证数量', key: 'image_count', width: 12 }
+      { header: '图片数量', key: 'image_count', width: 10 }
     ];
 
     worksheet.columns = columns;
-
-    // 设置表头样式
-    const headerRow = worksheet.getRow(1);
-    headerRow.font = { bold: true };
-    headerRow.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFE6F3FF' }
-    };
 
     // 添加数据
     formattedOrders.forEach(order => {
@@ -1588,7 +1735,7 @@ class OrderService extends BaseService {
         customer_name: order.customer_name,
         customer_phone: order.customer_phone || '',
         player_count: order.player_count,
-        language: this.getLanguageText(order.language),
+        display_languages: order.display_languages ? order.display_languages.join(', ') : '',
         internal_support: order.internal_support ? '是' : '否',
         store_name: order.store_name || '',
         room_name: order.room_name || '',
@@ -1623,14 +1770,15 @@ class OrderService extends BaseService {
       worksheet.addRow(rowData);
     });
 
-    // 自动调整列宽
-    worksheet.columns.forEach(column => {
-      if (column.key === 'notes') {
-        column.width = 50; // 备注列设置更宽
-      }
-    });
+    // 设置样式
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE6E6FA' }
+    };
 
-    // 生成buffer
+    // 生成Buffer
     const buffer = await workbook.xlsx.writeBuffer();
     return buffer;
   }
@@ -1688,7 +1836,7 @@ class OrderService extends BaseService {
       'company_id', 'store_id', 'room_id', 'order_type', 'order_date', 'weekday', 'language',
       'start_time', 'end_time', 'duration', 'customer_name', 'customer_phone', 'player_count',
       'internal_support', 'script_id', 'script_name', 'game_host_id', 'npc_id',
-      'escape_room_id', 'escape_room_name', 'is_group_booking', 'include_photos', 'include_cctv',
+      'escape_room_id', 'escape_room_name', 'escape_room_npc_roles', 'is_group_booking', 'include_photos', 'include_cctv',
       'booking_type', 'is_free', 'unit_price', 'total_amount', 'payment_status', 'payment_date', 'payment_method',
       'promo_code', 'promo_quantity', 'promo_discount', 'pic_id', 'pic_payment', 'notes',
       'status', 'created_by', 'updated_by', 'images',

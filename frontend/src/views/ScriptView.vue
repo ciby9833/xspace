@@ -132,6 +132,16 @@
               <div class="script-details">
                 <div class="script-name" @click="viewScript(record)">
                   {{ record.name }}
+                  <div class="language-tags">
+                    <a-tag 
+                      v-for="lang in getSupportedLanguages(record)" 
+                      :key="lang"
+                      color="blue"
+                      size="small"
+                    >
+                      {{ getLanguageLabel(lang) }}
+                    </a-tag>
+                  </div>
                 </div>
                 <div class="script-meta">
                   <a-tag :color="getTypeColor(record.type)" size="small">
@@ -467,6 +477,31 @@ const getScriptTags = (script) => {
   }
 }
 
+// 获取支持语言数组
+const getSupportedLanguages = (script) => {
+  if (!script.supported_languages) return ['IND'] // 默认印尼语
+  
+  if (Array.isArray(script.supported_languages)) {
+    return script.supported_languages
+  }
+  
+  try {
+    return JSON.parse(script.supported_languages)
+  } catch (e) {
+    return ['IND'] // 默认印尼语
+  }
+}
+
+// 获取语言标签
+const getLanguageLabel = (lang) => {
+  const labels = {
+    'IND': '印尼语',
+    'CN': '中文',
+    'EN': '英文'
+  }
+  return labels[lang] || lang
+}
+
 // 🆕 获取图片URL
 const getImageUrl = (imageUrl) => {
   if (!imageUrl) return ''
@@ -795,6 +830,13 @@ onMounted(() => {
 
 .script-name:hover {
   text-decoration: underline;
+}
+
+.script-name .language-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .script-meta {

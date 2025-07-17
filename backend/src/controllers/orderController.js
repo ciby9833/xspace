@@ -70,7 +70,7 @@ class OrderController {
         // 预订类型筛选
         booking_type: req.query.booking_type,
         
-        // 语言筛选
+        // 🆕 语言筛选（按剧本/密室支持的语言筛选）
         language: req.query.language,
         
         // 日期范围筛选
@@ -113,7 +113,21 @@ class OrderController {
   async getStoreOrders(req, res) {
     try {
       const { storeId } = req.params;
-      const result = await orderService.getStoreOrders(storeId, req.query, req.user);
+      
+      // 🆕 优化查询参数处理
+      const query = {
+        order_type: req.query.order_type,
+        status: req.query.status,
+        payment_status: req.query.payment_status,
+        booking_type: req.query.booking_type,
+        language: req.query.language,
+        start_date: req.query.start_date,
+        end_date: req.query.end_date,
+        customer_name: req.query.customer_name,
+        customer_phone: req.query.customer_phone
+      };
+      
+      const result = await orderService.getStoreOrders(storeId, query, req.user);
       
       res.json({
         success: true,

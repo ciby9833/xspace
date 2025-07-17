@@ -29,7 +29,9 @@ class GameHostService extends BaseService {
       status: filters.status,
       customer_name: filters.customer_name ? filters.customer_name.trim() : undefined,
       customer_phone: filters.customer_phone ? filters.customer_phone.trim() : undefined,
-      store_id: filters.store_id
+      store_id: filters.store_id,
+      // 🆕 添加语言筛选
+      language: filters.language
     };
 
     // 移除undefined值
@@ -41,9 +43,11 @@ class GameHostService extends BaseService {
 
     const orders = await gameHostModel.findGameHostOrders(gameHostId, processedFilters);
 
-    // 格式化时间字段
+    // 格式化时间字段并处理语言显示
     return orders.map(order => {
       const formatted = this.formatTimeFields(order, user.user_timezone);
+      // 🆕 处理语言显示：显示剧本/密室支持的语言
+      formatted.display_languages = this.getOrderDisplayLanguages(order);
       // 确保 images 是数组
       if (formatted.images && !Array.isArray(formatted.images)) {
         formatted.images = [];
@@ -60,7 +64,10 @@ class GameHostService extends BaseService {
     const order = await gameHostModel.findCurrentInProgressOrder(gameHostId);
     
     if (order) {
-      return this.formatTimeFields(order, user.user_timezone);
+      const formatted = this.formatTimeFields(order, user.user_timezone);
+      // 🆕 处理语言显示：显示剧本/密室支持的语言
+      formatted.display_languages = this.getOrderDisplayLanguages(order);
+      return formatted;
     }
     
     return null;
@@ -275,7 +282,10 @@ class GameHostService extends BaseService {
     const order = await gameHostModel.findGameHostOrderById(orderId, gameHostId);
     
     if (order) {
-      return this.formatTimeFields(order, user.user_timezone);
+      const formatted = this.formatTimeFields(order, user.user_timezone);
+      // 🆕 处理语言显示：显示剧本/密室支持的语言
+      formatted.display_languages = this.getOrderDisplayLanguages(order);
+      return formatted;
     }
     
     return null;
@@ -384,8 +394,13 @@ class GameHostService extends BaseService {
 
     const result = await gameHostModel.getGameHostOrderHistory(gameHostId, historyOptions);
 
-    // 格式化时间字段
-    result.data = result.data.map(order => this.formatTimeFields(order, user.user_timezone));
+    // 格式化时间字段并处理语言显示
+    result.data = result.data.map(order => {
+      const formatted = this.formatTimeFields(order, user.user_timezone);
+      // 🆕 处理语言显示：显示剧本/密室支持的语言
+      formatted.display_languages = this.getOrderDisplayLanguages(order);
+      return formatted;
+    });
 
     return result;
   }
@@ -458,6 +473,65 @@ class GameHostService extends BaseService {
     }
 
     return false;
+  }
+
+  // 🆕 获取订单显示语言（基于剧本/密室的支持语言）
+  getOrderDisplayLanguages(order) {
+    let supportedLanguages = [];
+    
+    if (order.order_type === '剧本杀' && order.script_supported_languages) {
+      try {
+        if (typeof order.script_supported_languages === 'string') {
+          supportedLanguages = JSON.parse(order.script_supported_languages);
+        } else if (Array.isArray(order.script_supported_languages)) {
+          supportedLanguages = order.script_supported_languages;
+        }
+      } catch (e) {
+        console.warn('解析剧本语言失败:', e);
+        supportedLanguages = ['IND']; // 默认印尼语
+      }
+    } else if (order.order_type === '密室' && order.escape_room_supported_languages) {
+      try {
+        if (typeof order.escape_room_supported_languages === 'string') {
+          supportedLanguages = JSON.parse(order.escape_room_supported_languages);
+        } else if (Array.isArray(order.escape_room_supported_languages)) {
+          supportedLanguages = order.escape_room_supported_languages;
+        }
+      } catch (e) {
+        console.warn('解析密室语言失败:', e);
+        supportedLanguages = ['IND']; // 默认印尼语
+      }
+    } else if (order.content_supported_languages) {
+      // 处理历史记录查询中的语言字段
+      try {
+        if (typeof order.content_supported_languages === 'string') {
+          supportedLanguages = JSON.parse(order.content_supported_languages);
+        } else if (Array.isArray(order.content_supported_languages)) {
+          supportedLanguages = order.content_supported_languages;
+        }
+      } catch (e) {
+        console.warn('解析内容语言失败:', e);
+        supportedLanguages = ['IND']; // 默认印尼语
+      }
+    }
+    
+    // 如果没有获取到语言信息，使用默认值
+    if (!supportedLanguages || supportedLanguages.length === 0) {
+      supportedLanguages = ['IND'];
+    }
+    
+    // 转换为中文显示
+    return supportedLanguages.map(lang => this.getLanguageText(lang));
+  }
+
+  // 🆕 获取语言文本显示
+  getLanguageText(language) {
+    const languageMap = {
+      'CN': '中文',
+      'EN': '英语',
+      'IND': '印尼语'
+    };
+    return languageMap[language] || language;
   }
 }
 

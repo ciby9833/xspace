@@ -91,6 +91,16 @@
                 un-checked-children="禁用"
               />
             </a-form-item>
+
+            <a-form-item label="支持语言" name="supported_languages">
+              <a-select
+                v-model:value="formData.supported_languages"
+                mode="multiple"
+                placeholder="选择支持的语言（默认印尼语）"
+                :options="languageOptions"
+                style="width: 100%"
+              />
+            </a-form-item>
           </div>
         </a-col>
 
@@ -402,8 +412,16 @@ const formData = reactive({
   images: [], // 🆕 图片数组
   tags: [],
   props: '',
+  supported_languages: ['IND'], // 默认印尼语
   is_active: true
 })
+
+// 语言选项
+const languageOptions = [
+  { value: 'IND', label: '印尼语' },
+  { value: 'CN', label: '中文' },
+  { value: 'EN', label: '英文' }
+]
 
 // 表单验证规则
 const formRules = {
@@ -669,6 +687,7 @@ const resetForm = () => {
     images: [],
     tags: [],
     props: '',
+    supported_languages: ['IND'], // 默认印尼语
     is_active: true
   })
   storeConfigs.value = [] // 🆕 重置门店配置
@@ -693,6 +712,10 @@ watch(() => props.scriptData, async (newData, oldData) => {
           // 🆕 处理images字段
           formData[key] = Array.isArray(newData[key]) ? newData[key] : 
                          (typeof newData[key] === 'string' ? JSON.parse(newData[key] || '[]') : [])
+        } else if (key === 'supported_languages') {
+          // 处理supported_languages字段
+          formData[key] = Array.isArray(newData[key]) ? newData[key] : 
+                         (typeof newData[key] === 'string' ? JSON.parse(newData[key] || '["IND"]') : ['IND'])
         } else {
           formData[key] = newData[key]
         }
@@ -751,7 +774,8 @@ const handleSubmit = async () => {
     const submitData = {
       ...formData,
       tags: formData.tags.length > 0 ? formData.tags : null,
-      images: formData.images.length > 0 ? formData.images : [] // 🆕 确保传递图片数组
+      images: formData.images.length > 0 ? formData.images : [], // 🆕 确保传递图片数组
+      supported_languages: formData.supported_languages.length > 0 ? formData.supported_languages : ['IND'] // 默认印尼语
     }
 
     let scriptId

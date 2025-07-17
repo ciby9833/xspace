@@ -168,7 +168,7 @@
               <div class="store-name">{{ record.store_name || '未知门店' }}</div>
               <div class="room-name">{{ record.room_name || '未分配房间' }}</div>
               <div class="language-booking">
-                <a-tag size="small" color="blue">{{ getLanguageText(record.language) }}</a-tag>
+                <a-tag size="small" color="blue">{{ getDisplayLanguages(record) }}</a-tag>
                 <a-tag size="small" color="green">{{ record.booking_type }}</a-tag>
               </div>
             </div>
@@ -345,7 +345,7 @@
           <a-descriptions-item label="客户姓名">{{ selectedOrder.customer_name }}</a-descriptions-item>
           <a-descriptions-item label="客户电话">{{ selectedOrder.customer_phone || '未提供' }}</a-descriptions-item>
           <a-descriptions-item label="玩家人数">{{ selectedOrder.player_count }}人</a-descriptions-item>
-          <a-descriptions-item label="客户语言">{{ getLanguageText(selectedOrder.language) }}</a-descriptions-item>
+          <a-descriptions-item label="支持语言">{{ getDisplayLanguages(selectedOrder) }}</a-descriptions-item>
           
           <!-- 门店房间信息 -->
           <a-descriptions-item label="门店">{{ selectedOrder.store_name }}</a-descriptions-item>
@@ -908,6 +908,33 @@ const getLanguageText = (language) => {
     'IND': '印尼语'
   }
   return languageMap[language] || language
+}
+
+// 获取显示语言
+const getDisplayLanguages = (order) => {
+  if (!order) return '未知'
+  
+  // 优先使用display_languages字段
+  if (order.display_languages) {
+    return order.display_languages
+  }
+  
+  // 兼容旧数据
+  const languages = []
+  if (order.script_supported_languages) {
+    const scriptLangs = Array.isArray(order.script_supported_languages) 
+      ? order.script_supported_languages 
+      : [order.script_supported_languages]
+    languages.push(...scriptLangs.map(lang => getLanguageText(lang)))
+  }
+  if (order.escape_room_supported_languages) {
+    const roomLangs = Array.isArray(order.escape_room_supported_languages) 
+      ? order.escape_room_supported_languages 
+      : [order.escape_room_supported_languages]
+    languages.push(...roomLangs.map(lang => getLanguageText(lang)))
+  }
+  
+  return languages.length > 0 ? languages.join(' / ') : '未知'
 }
 
 // 状态和类型颜色映射

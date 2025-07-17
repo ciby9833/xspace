@@ -25,6 +25,7 @@ const migrateScriptModule = async () => {
         difficulty VARCHAR(20) CHECK (difficulty IN ('新手', '进阶', '硬核')),
         price DECIMAL(10,2), -- 建议价格
         cover_image VARCHAR(500), -- 封面图片URL
+        images JSONB DEFAULT '[]'::jsonb, -- 剧本图片数组
         tags JSONB, -- 标签 ["推理", "6人", "2小时"]
         props TEXT, -- 剧本道具说明
         is_active BOOLEAN DEFAULT true,
@@ -55,47 +56,59 @@ const migrateScriptModule = async () => {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_scripts_background ON scripts(background)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_store_scripts_store_id ON store_scripts(store_id)`);
 
-    // 4. 添加权限
-    console.log('🔐 添加剧本管理权限...');
-    
-    // 检查是否需要添加唯一约束（如果还没有的话）
-    try {
-      await client.query(`
-        ALTER TABLE role_permissions 
-        ADD CONSTRAINT unique_role_permission 
-        UNIQUE (role, permission_key)
+    // 4. 检查新的权限系统表是否存在
+    console.log('🔐 检查权限系统...');
+    const permissionModulesExists = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'permission_modules'
+      );
+    `);
+
+    if (permissionModulesExists.rows[0].exists) {
+      console.log('✅ 新的权限系统已存在，添加剧本相关权限...');
+      
+      // 检查剧本模块是否存在
+      const scriptModuleExists = await client.query(`
+        SELECT id FROM permission_modules WHERE name = 'script'
       `);
-      console.log('✅ 添加权限唯一约束');
-    } catch (error) {
-      if (error.message.includes('already exists')) {
-        console.log('💡 权限唯一约束已存在');
+      
+      let scriptModuleId;
+      if (scriptModuleExists.rows.length === 0) {
+        // 创建剧本模块
+        const moduleResult = await client.query(`
+          INSERT INTO permission_modules (name, display_name, description, sort_order)
+          VALUES ('script', '剧本管理', '剧本相关功能管理', 2)
+          RETURNING id
+        `);
+        scriptModuleId = moduleResult.rows[0].id;
+        console.log('✅ 创建剧本权限模块');
       } else {
-        console.log('⚠️  权限约束添加失败，但继续执行:', error.message);
+        scriptModuleId = scriptModuleExists.rows[0].id;
+        console.log('✅ 剧本权限模块已存在');
       }
-    }
-    
-    const scriptPermissions = [
-      // 主账号权限
-      { role: '主账号', key: 'script.manage', name: '剧本管理', desc: '完整的剧本CRUD权限' },
-      { role: '主账号', key: 'script.store_config', name: '门店剧本配置', desc: '配置剧本在门店的上架情况' },
+
+      // 添加剧本相关权限
+      const scriptPermissions = [
+        { name: 'view', display_name: '查看剧本', key: 'script.view' },
+        { name: 'create', display_name: '创建剧本', key: 'script.create' },
+        { name: 'edit', display_name: '编辑剧本', key: 'script.edit' },
+        { name: 'delete', display_name: '删除剧本', key: 'script.delete' },
+        { name: 'manage', display_name: '剧本管理', key: 'script.manage' },
+        { name: 'store_config', display_name: '门店剧本配置', key: 'script.store_config' }
+      ];
       
-      // 店长权限  
-      { role: '店长', key: 'script.view', name: '查看剧本', desc: '查看门店可用剧本' },
-      { role: '店长', key: 'script.store_config', name: '门店剧本配置', desc: '配置本门店剧本' },
-      
-      // 客服权限
-      { role: '客服', key: 'script.view', name: '查看剧本', desc: '查看门店可用剧本' },
-      
-      // 主持人权限
-      { role: '主持人', key: 'script.view', name: '查看剧本', desc: '查看分配给自己的剧本' }
-    ];
-    
-    for (const perm of scriptPermissions) {
-      await client.query(`
-        INSERT INTO role_permissions (role, permission_key, permission_name, description)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (role, permission_key) DO NOTHING
-      `, [perm.role, perm.key, perm.name, perm.desc]);
+      for (const perm of scriptPermissions) {
+        await client.query(`
+          INSERT INTO permissions (module_id, name, display_name, permission_key)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (permission_key) DO UPDATE SET
+            display_name = EXCLUDED.display_name
+        `, [scriptModuleId, perm.name, perm.display_name, perm.key]);
+      }
+      console.log('✅ 剧本权限添加完成');
+    } else {
+      console.log('⚠️  新的权限系统不存在，跳过权限配置');
     }
     
     console.log('✅ 剧本模块迁移完成');

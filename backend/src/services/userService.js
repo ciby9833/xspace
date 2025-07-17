@@ -139,9 +139,10 @@ class UserService extends BaseService {
     }
 
     // 验证角色ID是否有效且可管理
+    let role = null;
     if (role_id) {
       const permissionModel = require('../models/permissionModel');
-      const role = await permissionModel.getRoleById(role_id, currentUser.company_id, currentUser.account_level);
+      role = await permissionModel.getRoleById(role_id, currentUser.company_id, currentUser.account_level);
       if (!role) {
         throw new Error('无效的角色或无权限分配该角色');
       }
@@ -174,6 +175,23 @@ class UserService extends BaseService {
       cleanedUserData.phone = null;
     }
 
+    // 根据角色设置role字段
+    let roleValue = 'Staff'; // 默认值
+    if (role) {
+      // 根据角色名称映射到数据库允许的值
+      const roleMapping = {
+        'superadmin': 'superadmin',
+        'admin': 'admin',
+        'Finance': 'Finance',
+        'Staff': 'Staff',
+        'service': 'service',
+        'manager': 'manager',
+        'host': 'host',
+        'supervisor': 'supervisor'
+      };
+      roleValue = roleMapping[role.name] || 'Staff';
+    }
+
     // 创建用户数据
     const newUserData = {
       ...cleanedUserData,
@@ -181,6 +199,7 @@ class UserService extends BaseService {
       position: cleanedUserData.position,
       account_level: account_level || ACCOUNT_LEVELS.STORE,
       role_id: role_id,
+      role: roleValue, // 设置role字段
       password_hash,
       timezone: cleanedUserData.timezone || 'Asia/Jakarta',
       stores: targetStoreIds

@@ -140,6 +140,25 @@
           </a-row>
         </div>
 
+        <!-- 语言筛选 -->
+        <div class="filter-group">
+          <h4>支持语言</h4>
+          <a-checkbox-group 
+            v-model:value="filters.languages" 
+            @change="handleFilterChange"
+          >
+            <div class="filter-item">
+              <a-checkbox value="CN">中文</a-checkbox>
+            </div>
+            <div class="filter-item">
+              <a-checkbox value="EN">英语</a-checkbox>
+            </div>
+            <div class="filter-item">
+              <a-checkbox value="IND">印尼语</a-checkbox>
+            </div>
+          </a-checkbox-group>
+        </div>
+
         <!-- 重置按钮 -->
         <div class="filter-actions">
           <a-button @click="resetFilters" size="small">重置筛选</a-button>
@@ -189,7 +208,10 @@
 
               <!-- 项目信息 -->
               <div class="item-info">
-                <h3 class="item-name">{{ item.name }}</h3>
+                <h3 class="item-name">
+                  {{ item.name }}
+                  <span class="item-languages">{{ getItemLanguages(item) }}</span>
+                </h3>
                 
                 <div class="item-details">
                   <div class="detail-row">
@@ -215,6 +237,9 @@
                   <div v-if="item.npc_count > 0" class="detail-row">
                     <TeamOutlined />
                     <span>{{ item.npc_count }}个NPC</span>
+                    <span v-if="item.type === 'escape_room' && item.npc_roles && item.npc_roles.length > 0" class="npc-roles">
+                      ({{ item.npc_roles.join('、') }})
+                    </span>
                   </div>
                 </div>
 
@@ -416,15 +441,15 @@
                     </div>
                     
                     <div v-else class="modern-calendar-container">
-                      <!-- 日期范围选择和导航 -->
+                      <!-- 日期选择和导航 -->
                       <div class="calendar-header">
                         <div class="date-range-selector">
-                          <a-range-picker 
-                            v-model:value="customDateRange"
+                          <a-date-picker 
+                            v-model:value="selectedSingleDate"
                             size="small"
                             :disabled-date="disabledDate"
-                            @change="handleCustomDateRangeChange"
-                            placeholder="['开始日期', '结束日期']"
+                            @change="handleSingleDateChange"
+                            placeholder="选择日期"
                           />
                         </div>
                         
@@ -782,7 +807,8 @@ const filters = reactive({
   min_players: null,
   max_players: null,
   min_price: null,
-  max_price: null
+  max_price: null,
+  languages: [] // 语言筛选
 })
 
 const selectedItem = ref(null)
@@ -806,8 +832,8 @@ const tempStartDate = ref(null)
 const roomSchedule = ref([])
 const roomOccupancy = ref(new Map()) // 存储房间占用信息
 
-// 🆕 日期范围选择
-const customDateRange = ref([dayjs(), dayjs().add(6, 'day')]) // 自定义日期范围
+// 🆕 单日期选择
+const selectedSingleDate = ref(dayjs()) // 选择的单个日期
 
 // 兼容旧的状态
 const selectedDate = ref(null)
@@ -845,25 +871,17 @@ const weekDays = computed(() => {
   const days = []
   const today = dayjs().startOf('day')
   
-  // 使用自定义日期范围
-  if (customDateRange.value && customDateRange.value.length === 2) {
-    const startDate = customDateRange.value[0]
-    const endDate = customDateRange.value[1]
-    const daysDiff = endDate.diff(startDate, 'day') + 1
+  // 使用选择的单个日期
+  if (selectedSingleDate.value) {
+    const selectedDate = selectedSingleDate.value
     
-    for (let i = 0; i < daysDiff; i++) {
-      const date = startDate.add(i, 'day')
-      
-      // 🔧 只显示今天和以后的日期
-      if (date.isBefore(today)) {
-        continue
-      }
-      
+    // 🔧 只显示今天和以后的日期
+    if (!selectedDate.isBefore(today)) {
       days.push({
-        date: date.format('YYYY-MM-DD'),
-        dayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.day()],
-        dayNumber: date.format('DD'),
-        dayjs: date
+        date: selectedDate.format('YYYY-MM-DD'),
+        dayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][selectedDate.day()],
+        dayNumber: selectedDate.format('DD'),
+        dayjs: selectedDate
       })
     }
   }
@@ -965,7 +983,9 @@ const loadBookingItems = async () => {
       // 🆕 添加剧本类型筛选
       script_types: filters.script_types.length > 0 ? filters.script_types : undefined,
       // 🆕 添加恐怖等级筛选
-      horror_levels: filters.horror_levels.length > 0 ? filters.horror_levels : undefined
+      horror_levels: filters.horror_levels.length > 0 ? filters.horror_levels : undefined,
+      // 🆕 添加语言筛选
+      languages: filters.languages.length > 0 ? filters.languages : undefined
     }
     
     // 移除undefined值
@@ -1288,7 +1308,10 @@ const proceedToBooking = async () => {
       end_time: formatHour(selectedTimeRange.value.endTime),
       
       // 价格信息
-      store_price: getSelectedStorePrice()
+      store_price: getSelectedStorePrice(),
+      
+      // 🆕 从预检查响应中获取项目详细信息，包括NPC角色
+      item_info: checkResponse.data.item_info || null
     }
     
     // 切换到收款确认TAB
@@ -1465,11 +1488,9 @@ const isSelectedStoreClosed = () => {
 }
 
 // 🆕 现代化时间选择方法
-const formatWeekRange = () => {
-  if (customDateRange.value && customDateRange.value.length === 2) {
-    const start = customDateRange.value[0]
-    const end = customDateRange.value[1]
-    return `${start.format('M月D日')} - ${end.format('M月D日, YYYY')}`
+const formatSelectedDate = () => {
+  if (selectedSingleDate.value) {
+    return selectedSingleDate.value.format('M月D日, YYYY')
   }
   return ''
 }
@@ -1495,7 +1516,7 @@ const formatHour = (hour) => {
 
 
 const goToToday = () => {
-  customDateRange.value = [dayjs(), dayjs().add(6, 'day')]
+  selectedSingleDate.value = dayjs()
   loadRoomOccupancy()
 }
 
@@ -1695,7 +1716,7 @@ const loadRoomOccupancy = async () => {
     loadingSchedule.value = true
     roomOccupancy.value.clear()
     
-    // 为当前日期范围的每一天加载占用信息
+    // 为选择的单个日期加载占用信息
     for (const day of weekDays.value) {
       const response = await getStoreRoomSchedule(selectedStoreId.value, {
         date: day.date,
@@ -1738,13 +1759,9 @@ const cancelTimeSelection = () => {
 
 
 
-const handleCustomDateRangeChange = (dates) => {
-  if (dates && dates.length === 2) {
-    const daysDiff = dates[1].diff(dates[0], 'day') + 1
-    if (daysDiff > 7) {
-      message.warning('最多只能选择7天')
-      customDateRange.value = [dates[0], dates[0].add(6, 'day')]
-    }
+const handleSingleDateChange = (date) => {
+  if (date) {
+    selectedSingleDate.value = date
   }
   // 重置时间选择状态
   resetTimeSelection()
@@ -1797,6 +1814,26 @@ const resetAllState = () => {
   
   // 切换回预订TAB
   activeTab.value = 'booking'
+}
+
+// 获取项目支持的语言
+const getItemLanguages = (item) => {
+  if (!item || !item.supported_languages) return ''
+  
+  const languages = Array.isArray(item.supported_languages) 
+    ? item.supported_languages 
+    : [item.supported_languages]
+    
+  const languageTexts = languages.map(lang => {
+    const languageMap = {
+      'CN': '中文',
+      'EN': '英语', 
+      'IND': '印尼语'
+    }
+    return languageMap[lang] || lang
+  })
+  
+  return languageTexts.length > 0 ? `(${languageTexts.join('/')})` : ''
 }
 </script>
 
@@ -1966,6 +2003,13 @@ const resetAllState = () => {
   line-height: 1.4;
 }
 
+.item-languages {
+  font-size: 12px;
+  font-weight: 400;
+  color: #666;
+  margin-left: 8px;
+}
+
 .item-details {
   margin-bottom: 12px;
 }
@@ -1981,6 +2025,12 @@ const resetAllState = () => {
 .detail-row .anticon {
   margin-right: 6px;
   color: #999;
+}
+
+.npc-roles {
+  color: #666;
+  font-size: 12px;
+  margin-left: 4px;
 }
 
 .item-price {

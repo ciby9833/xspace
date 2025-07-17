@@ -96,6 +96,20 @@ class ScriptModel {
       paramIndex++;
     }
 
+    // 🆕 添加语言筛选
+    if (filters.language) {
+      query += ` AND s.supported_languages::jsonb ? $${paramIndex}`;
+      params.push(filters.language);
+      paramIndex++;
+    }
+
+    // 🆕 添加多语言筛选支持
+    if (filters.languages && Array.isArray(filters.languages) && filters.languages.length > 0) {
+      const languageConditions = filters.languages.map(() => `s.supported_languages::jsonb ? $${paramIndex++}`);
+      query += ` AND (${languageConditions.join(' OR ')})`;
+      params.push(...filters.languages);
+    }
+
     // 🆕 添加标签筛选（JSON数组包含查询）
     if (filters.tag) {
       query += ` AND s.tags::jsonb ? $${paramIndex}`;
@@ -132,6 +146,13 @@ class ScriptModel {
     if (filters.keyword) {
       query += ` AND (s.name ILIKE $${paramIndex} OR s.description ILIKE $${paramIndex} OR s.background ILIKE $${paramIndex})`;
       params.push(`%${filters.keyword}%`);
+      paramIndex++;
+    }
+
+    // 添加语言筛选
+    if (filters.language) {
+      query += ` AND s.supported_languages::jsonb ? $${paramIndex}`;
+      params.push(filters.language);
       paramIndex++;
     }
 
@@ -179,21 +200,22 @@ class ScriptModel {
   async create(scriptData) {
     const {
       company_id, name, type, background, description, min_players, max_players,
-      duration, difficulty, price, images, tags, props
+      duration, difficulty, price, images, tags, props, supported_languages
     } = scriptData;
 
     const query = `
       INSERT INTO scripts (
         company_id, name, type, background, description, min_players, max_players,
-        duration, difficulty, price, images, tags, props
+        duration, difficulty, price, images, tags, props, supported_languages
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `;
 
     const result = await pool.query(query, [
       company_id, name, type, background, description, min_players, max_players,
-      duration, difficulty, price, JSON.stringify(images || []), JSON.stringify(tags || []), props
+      duration, difficulty, price, JSON.stringify(images || []), JSON.stringify(tags || []), props,
+      JSON.stringify(supported_languages || ['IND'])
     ]);
 
     return result.rows[0];
@@ -210,7 +232,7 @@ class ScriptModel {
       if (updateData[key] !== undefined) {
         fields.push(`${key} = $${paramIndex}`);
         // 特殊处理JSON字段
-        if (['tags', 'images'].includes(key)) {
+        if (['tags', 'images', 'supported_languages'].includes(key)) {
           values.push(JSON.stringify(updateData[key]));
         } else {
           values.push(updateData[key]);

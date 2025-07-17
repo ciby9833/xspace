@@ -39,7 +39,10 @@ const migrateOrdersEnhanced = async () => {
       
       // 实际开始和结束时间（用于Game Host功能）
       'ADD COLUMN IF NOT EXISTS actual_start_time TIMESTAMPTZ', // 实际开始时间
-      'ADD COLUMN IF NOT EXISTS actual_end_time TIMESTAMPTZ' // 实际结束时间
+      'ADD COLUMN IF NOT EXISTS actual_end_time TIMESTAMPTZ', // 实际结束时间
+      
+      // 密室NPC角色字段
+      'ADD COLUMN IF NOT EXISTS escape_room_npc_roles TEXT' // 密室NPC角色（JSON字符串）
     ];
 
     for (const field of financialFields) {
@@ -159,6 +162,7 @@ const migrateOrdersEnhanced = async () => {
       COMMENT ON COLUMN orders.refund_date IS '退款日期';
       COMMENT ON COLUMN orders.actual_start_time IS '实际开始时间';
       COMMENT ON COLUMN orders.actual_end_time IS '实际结束时间';
+      COMMENT ON COLUMN orders.escape_room_npc_roles IS '密室NPC角色（JSON字符串）';
     `);
 
     // 6. 创建计算总金额的触发器函数

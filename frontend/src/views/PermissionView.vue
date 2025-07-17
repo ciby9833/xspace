@@ -138,7 +138,7 @@
             <a-empty description="请从左侧选择一个角色来配置权限" />
           </div>
 
-          <div v-else>
+          <div v-else class="permission-content">
             <!-- 角色信息展示 -->
             <div class="role-detail-info">
               <a-descriptions :column="2" size="small">
@@ -159,8 +159,65 @@
 
             <a-divider />
 
+            <!-- 权限统计信息 -->
+            <div class="permission-stats">
+              <a-row :gutter="16">
+                <a-col :span="6">
+                  <div class="stat-item">
+                    <div class="stat-number">{{ totalPermissions }}</div>
+                    <div class="stat-label">总权限数</div>
+                  </div>
+                </a-col>
+                <a-col :span="6">
+                  <div class="stat-item">
+                    <div class="stat-number">{{ selectedPermissionsCount }}</div>
+                    <div class="stat-label">已选择</div>
+                  </div>
+                </a-col>
+                <a-col :span="6">
+                  <div class="stat-item">
+                    <div class="stat-number">{{ totalModules }}</div>
+                    <div class="stat-label">权限模块</div>
+                  </div>
+                </a-col>
+                <a-col :span="6">
+                  <div class="stat-item">
+                    <div class="stat-number">{{ selectedModulesCount }}</div>
+                    <div class="stat-label">已选模块</div>
+                  </div>
+                </a-col>
+              </a-row>
+            </div>
+
+            <a-divider />
+
+            <!-- 快速操作栏 -->
+            <div class="quick-actions" v-if="canManageRolePermissions(selectedRole)">
+              <a-space>
+                <a-button size="small" @click="selectAllPermissions">
+                  <CheckOutlined />
+                  全选
+                </a-button>
+                <a-button size="small" @click="clearAllPermissions">
+                  <ClearOutlined />
+                  清空
+                </a-button>
+                <a-button size="small" @click="expandAllModules">
+                  <DownOutlined />
+                  展开全部
+                </a-button>
+                <a-button size="small" @click="collapseAllModules">
+                  <UpOutlined />
+                  收起全部
+                </a-button>
+              </a-space>
+            </div>
+
+            <a-divider style="margin: 16px 0" />
+
+            <!-- 权限模块列表 -->
             <a-spin :spinning="permissionsLoading">
-              <div class="permission-modules">
+              <div class="permission-modules-container">
                 <a-collapse v-model:activeKey="activeModules" ghost>
                   <a-collapse-panel 
                     v-for="module in permissionStructure" 
@@ -169,33 +226,40 @@
                     class="permission-module"
                   >
                     <template #extra>
-                      <a-checkbox
-                        :checked="isModuleFullyChecked(module)"
-                        :indeterminate="isModuleIndeterminate(module)"
-                        @change="toggleModule(module, $event.target.checked)"
-                        @click.stop
-                        :disabled="!canManageRolePermissions(selectedRole)"
-                      >
-                        全选
-                      </a-checkbox>
+                      <div class="module-actions">
+                        <span class="module-count">
+                          {{ getModuleSelectedCount(module) }}/{{ module.permissions.length }}
+                        </span>
+                        <a-checkbox
+                          :checked="isModuleFullyChecked(module)"
+                          :indeterminate="isModuleIndeterminate(module)"
+                          @change="toggleModule(module, $event.target.checked)"
+                          @click.stop
+                          :disabled="!canManageRolePermissions(selectedRole)"
+                        >
+                          全选
+                        </a-checkbox>
+                      </div>
                     </template>
 
                     <div class="permission-list">
-                      <a-row :gutter="[16, 8]">
+                      <a-row :gutter="[16, 12]">
                         <a-col 
                           v-for="permission in module.permissions" 
                           :key="permission.id"
-                          :xs="24" :sm="12" :md="8"
+                          :xs="24" :sm="12" :md="8" :lg="6"
                         >
-                          <a-checkbox
-                            v-model:checked="selectedPermissions[permission.id]"
-                            :disabled="!canManageRolePermissions(selectedRole)"
-                          >
-                            <div class="permission-item">
-                              <div class="permission-name">{{ permission.display_name }}</div>
-                              <div class="permission-desc">{{ permission.description }}</div>
-                            </div>
-                          </a-checkbox>
+                          <div class="permission-card-item">
+                            <a-checkbox
+                              v-model:checked="selectedPermissions[permission.id]"
+                              :disabled="!canManageRolePermissions(selectedRole)"
+                            >
+                              <div class="permission-item-content">
+                                <div class="permission-name">{{ permission.display_name }}</div>
+                                <div class="permission-desc">{{ permission.description }}</div>
+                              </div>
+                            </a-checkbox>
+                          </div>
                         </a-col>
                       </a-row>
                     </div>
@@ -293,7 +357,11 @@ import { message } from 'ant-design-vue'
 import { 
   PlusOutlined, 
   EditOutlined, 
-  DeleteOutlined 
+  DeleteOutlined,
+  CheckOutlined,
+  ClearOutlined,
+  DownOutlined,
+  UpOutlined
 } from '@ant-design/icons-vue'
 import { permissionAPI } from '@/api/permission'
 import { useAuthStore } from '@/stores/auth'
@@ -400,6 +468,27 @@ const needCompanySelection = computed(() => {
          isPlatformUser.value
 })
 
+// 权限统计
+const totalPermissions = computed(() => {
+  return permissionStructure.value.reduce((total, module) => {
+    return total + module.permissions.length
+  }, 0)
+})
+
+const selectedPermissionsCount = computed(() => {
+  return Object.keys(selectedPermissions).filter(key => selectedPermissions[key]).length
+})
+
+const totalModules = computed(() => {
+  return permissionStructure.value.length
+})
+
+const selectedModulesCount = computed(() => {
+  return permissionStructure.value.filter(module => 
+    module.permissions.some(p => selectedPermissions[p.id])
+  ).length
+})
+
 // 检查是否可以编辑指定角色
 const canEditRole = (role) => {
   if (!canManageRoles.value) return false
@@ -487,6 +576,11 @@ const isModuleFullyChecked = (module) => {
 const isModuleIndeterminate = (module) => {
   const checkedCount = module.permissions.filter(p => selectedPermissions[p.id]).length
   return checkedCount > 0 && checkedCount < module.permissions.length
+}
+
+// 获取模块已选权限数量
+const getModuleSelectedCount = (module) => {
+  return module.permissions.filter(p => selectedPermissions[p.id]).length
 }
 
 // 方法
@@ -637,6 +731,29 @@ const resetPermissions = () => {
   })
 }
 
+// 快速操作方法
+const selectAllPermissions = () => {
+  permissionStructure.value.forEach(module => {
+    module.permissions.forEach(permission => {
+      selectedPermissions[permission.id] = true
+    })
+  })
+}
+
+const clearAllPermissions = () => {
+  Object.keys(selectedPermissions).forEach(key => {
+    selectedPermissions[key] = false
+  })
+}
+
+const expandAllModules = () => {
+  activeModules.value = permissionStructure.value.map(m => m.id)
+}
+
+const collapseAllModules = () => {
+  activeModules.value = []
+}
+
 const savePermissions = async () => {
   if (!selectedRole.value) return
   
@@ -784,10 +901,20 @@ onMounted(async () => {
   margin-bottom: 0;
 }
 
-.role-card,
+.role-card {
+  height: calc(100vh - 200px);
+  overflow: hidden;
+}
+
 .permission-card {
   height: calc(100vh - 200px);
   overflow: hidden;
+}
+
+.permission-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .filter-section {
@@ -867,33 +994,104 @@ onMounted(async () => {
   padding: 16px;
   border-radius: 6px;
   margin-bottom: 16px;
+  flex-shrink: 0;
 }
 
-.permission-modules {
-  height: calc(100% - 200px);
+/* 权限统计样式 */
+.permission-stats {
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.stat-number {
+  font-size: 24px;
+  font-weight: bold;
+  color: #1890ff;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* 快速操作栏 */
+.quick-actions {
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+/* 权限模块容器 */
+.permission-modules-container {
+  flex: 1;
   overflow-y: auto;
+  max-height: calc(100vh - 500px);
+  min-height: 300px;
+  padding-bottom: 20px;
 }
 
 .permission-module {
   margin-bottom: 16px;
 }
 
+.permission-module:last-child {
+  margin-bottom: 0;
+  padding-bottom: 150px;
+}
+
+.module-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.module-count {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  background: #f5f5f5;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
 .permission-list {
   padding: 16px 0;
 }
 
-.permission-item {
-  padding: 8px 0;
+.permission-card-item {
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.3s;
+}
+
+.permission-card-item:hover {
+  border-color: #1890ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+}
+
+.permission-item-content {
+  margin-left: 8px;
 }
 
 .permission-name {
   font-weight: 500;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+  color: rgba(0, 0, 0, 0.85);
 }
 
 .permission-desc {
   font-size: 12px;
   color: rgba(0, 0, 0, 0.45);
+  line-height: 1.4;
 }
 
 .empty-state {
@@ -929,5 +1127,37 @@ onMounted(async () => {
     flex-direction: column;
     gap: 4px;
   }
+  
+  .permission-stats .ant-col {
+    margin-bottom: 12px;
+  }
+  
+  .quick-actions {
+    text-align: center;
+  }
+  
+  .quick-actions .ant-space {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+/* 滚动条样式 */
+.permission-modules-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.permission-modules-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.permission-modules-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.permission-modules-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 </style> 

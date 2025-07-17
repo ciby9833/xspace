@@ -102,6 +102,20 @@
         </a-col>
       </a-row>
 
+      <a-row :gutter="16">
+        <a-col :span="24">
+          <a-form-item label="支持语言" name="supported_languages">
+            <a-select
+              v-model:value="formData.supported_languages"
+              mode="multiple"
+              placeholder="选择支持的语言（默认印尼语）"
+              :options="languageOptions"
+              style="width: 100%"
+            />
+          </a-form-item>
+        </a-col>
+      </a-row>
+
       <a-form-item label="NPC角色" name="npc_roles">
         <div class="npc-roles-input">
           <a-tag
@@ -380,8 +394,16 @@ const formData = reactive({
   description: '',
   props: '',
   cover_images: [],
+  supported_languages: ['IND'], // 默认印尼语
   is_active: true
 })
+
+// 语言选项
+const languageOptions = [
+  { value: 'IND', label: '印尼语' },
+  { value: 'CN', label: '中文' },
+  { value: 'EN', label: '英文' }
+]
 
 // 表单验证规则
 const rules = {
@@ -420,6 +442,8 @@ const resetForm = () => {
   Object.keys(formData).forEach(key => {
     if (key === 'cover_images' || key === 'npc_roles') {
       formData[key] = []
+    } else if (key === 'supported_languages') {
+      formData[key] = ['IND'] // 默认印尼语
     } else if (key === 'min_players') {
       formData[key] = 1
     } else if (key === 'max_players') {
@@ -764,7 +788,8 @@ const onFinish = async () => {
     const submitData = {
       ...formData,
       cover_images: JSON.stringify(formData.cover_images),
-      npc_roles: JSON.stringify(formData.npc_roles)
+      npc_roles: JSON.stringify(formData.npc_roles),
+      supported_languages: JSON.stringify(formData.supported_languages)
     }
     
     let escapeRoomId

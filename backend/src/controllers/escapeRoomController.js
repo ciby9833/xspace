@@ -65,6 +65,7 @@ class EscapeRoomController {
         max_npc_count: req.query.max_npc_count !== undefined && req.query.max_npc_count !== '' ? 
           parseInt(req.query.max_npc_count) : undefined,
         keyword: req.query.keyword,
+        language: req.query.language,
         company_id: req.query.company_id
       };
 

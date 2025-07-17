@@ -51,7 +51,7 @@
         </a-col>
         <a-col :span="12">
           <a-form-item label="客户电话" name="customer_phone">
-            <a-input v-model:value="form.customer_phone" placeholder="输入客户电话" />
+            <a-input v-model:value="form.customer_phone" placeholder="输入客户电话（选填）" />
           </a-form-item>
         </a-col>
       </a-row>
@@ -89,7 +89,7 @@
       </a-row>
 
       <a-row :gutter="16">
-        <a-col :span="8">
+        <a-col :span="12">
           <a-form-item label="玩家人数" name="player_count">
             <a-input-number 
               v-model:value="form.player_count" 
@@ -100,16 +100,7 @@
             />
           </a-form-item>
         </a-col>
-        <a-col :span="8">
-          <a-form-item label="语言" name="language">
-            <a-select v-model:value="form.language" placeholder="选择语言">
-              <a-select-option value="CN">🇨🇳 中文</a-select-option>
-              <a-select-option value="EN">🇺🇸 英语</a-select-option>
-              <a-select-option value="IND">🇮🇩 印尼语</a-select-option>
-            </a-select>
-          </a-form-item>
-        </a-col>
-        <a-col :span="8">
+        <a-col :span="12">
           <a-form-item label="预订类型" name="booking_type">
             <a-select v-model:value="form.booking_type" placeholder="选择预订类型">
               <a-select-option value="Booking">预订</a-select-option>
@@ -516,8 +507,6 @@ const resetForm = () => {
   Object.keys(form).forEach(key => {
     if (key === 'player_count') {
       form[key] = 1
-    } else if (key === 'language') {
-      form[key] = 'CN'
     } else if (key === 'booking_type') {
       form[key] = 'Booking'
     } else if (key === 'payment_status') {
@@ -546,7 +535,6 @@ const form = reactive({
   start_time: null,
   end_time: null,
   player_count: 1,
-  language: 'CN',
   booking_type: 'Booking',
   payment_status: 'Not Yet',
   total_amount: 0,
@@ -575,12 +563,11 @@ const rules = {
   store_id: [{ required: true, message: '请选择门店' }],
   room_id: [{ required: true, message: '请选择房间' }],
   customer_name: [{ required: true, message: '请输入客户姓名' }],
-  customer_phone: [{ required: true, message: '请输入客户电话' }],
+  customer_phone: [], // 客户电话改为非必填
   order_date: [{ required: true, message: '请选择订单日期' }],
   start_time: [{ required: true, message: '请选择开始时间' }],
   end_time: [{ required: true, message: '请选择结束时间' }],
   player_count: [{ required: true, message: '请输入玩家人数' }],
-  language: [{ required: true, message: '请选择语言' }],
   booking_type: [{ required: true, message: '请选择预订类型' }],
   payment_status: [{ required: true, message: '请选择支付状态' }],
   game_host_id: [{ required: true, message: '请选择Game Host' }],
@@ -1039,6 +1026,9 @@ const handleSubmit = async () => {
 
     // 🆕 处理支付类型转换
     submitData.is_free = submitData.free_pay === 'Free'
+    
+    // 🆕 添加默认语言
+    submitData.language = 'IND'
 
     // 清理不需要的字段
     if (submitData.order_type === '剧本杀') {

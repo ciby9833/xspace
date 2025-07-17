@@ -1,10 +1,10 @@
-// 清理角色数据 node src/database/cleanup-roles.js
+// 清理角色数据 node src/database/cleanup-roles.js  
 require('dotenv').config();
 const { Pool } = require('pg');
 
 // 只保留这些角色
 const ROLE_WHITELIST = [
-  'superadmin', 'admin', 'Finance', 'Staff', 'service', 'manager', 'host', 'supervisor'
+  'superadmin', 'admin', 'Finance', 'Staff', 'service', 'manager', 'supervisor', 'Store Manager', 'Front Desk', 'Game Host', 'Franchisee'
 ];
 
 // 使用现有的数据库连接配置

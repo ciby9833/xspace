@@ -27,11 +27,13 @@ class GameHostModel {
         o.script_id,
         o.script_name,
         s.name as current_script_name,
+        s.supported_languages as script_supported_languages,
         
         -- 密室信息
         o.escape_room_id,
         o.escape_room_name,
         er.name as current_escape_room_name,
+        er.supported_languages as escape_room_supported_languages,
         
         -- 房间信息
         o.room_id,
@@ -132,6 +134,16 @@ class GameHostModel {
       paramIndex++;
     }
 
+    // 🆕 添加语言筛选逻辑：按剧本/密室支持的语言筛选
+    if (filters.language) {
+      query += ` AND (
+        (o.order_type = '剧本杀' AND s.supported_languages::jsonb ? $${paramIndex}) OR
+        (o.order_type = '密室' AND er.supported_languages::jsonb ? $${paramIndex})
+      )`;
+      params.push(filters.language);
+      paramIndex++;
+    }
+
     query += ` GROUP BY o.id, o.order_type, o.order_date, o.weekday, o.start_time, o.end_time,
                o.actual_start_time, o.actual_end_time, o.duration, o.customer_name,
                o.customer_phone, o.player_count, o.support_player_count, o.language,
@@ -139,7 +151,7 @@ class GameHostModel {
                o.escape_room_name, o.room_id, o.include_photos, o.include_cctv,
                o.is_group_booking, o.status, o.game_host_notes, o.notes,
                o.game_host_id, o.store_id, o.company_id, o.created_at, o.updated_at,
-               st.name, u.name, s.name, er.name, r.name
+               st.name, u.name, s.name, s.supported_languages, er.name, er.supported_languages, r.name
                ORDER BY o.order_date DESC, o.start_time ASC`;
 
     const result = await pool.query(query, params);
@@ -155,7 +167,9 @@ class GameHostModel {
         r.name as room_name,
         u.name as game_host_name,
         s.name as current_script_name,
+        s.supported_languages as script_supported_languages,
         er.name as current_escape_room_name,
+        er.supported_languages as escape_room_supported_languages,
         COALESCE(
           ARRAY_AGG(
             CASE WHEN oi.id IS NOT NULL THEN
@@ -185,7 +199,7 @@ class GameHostModel {
                o.escape_room_name, o.room_id, o.include_photos, o.include_cctv,
                o.is_group_booking, o.status, o.game_host_notes, o.notes,
                o.game_host_id, o.store_id, o.company_id, o.created_at, o.updated_at,
-               st.name, r.name, u.name, s.name, er.name
+               st.name, r.name, u.name, s.name, s.supported_languages, er.name, er.supported_languages
     `;
     
     const result = await pool.query(query, [orderId, gameHostId]);
@@ -201,7 +215,9 @@ class GameHostModel {
         r.name as room_name,
         u.name as game_host_name,
         s.name as current_script_name,
-        er.name as current_escape_room_name
+        s.supported_languages as script_supported_languages,
+        er.name as current_escape_room_name,
+        er.supported_languages as escape_room_supported_languages
       FROM orders o
       LEFT JOIN store st ON o.store_id = st.id
       LEFT JOIN rooms r ON o.room_id = r.id
@@ -471,7 +487,11 @@ class GameHostModel {
         CASE 
           WHEN o.order_type = '剧本杀' THEN COALESCE(s.name, o.script_name)
           ELSE COALESCE(er.name, o.escape_room_name)
-        END as content_name
+        END as content_name,
+        CASE 
+          WHEN o.order_type = '剧本杀' THEN s.supported_languages
+          ELSE er.supported_languages
+        END as content_supported_languages
       FROM orders o
       LEFT JOIN store st ON o.store_id = st.id
       LEFT JOIN rooms r ON o.room_id = r.id

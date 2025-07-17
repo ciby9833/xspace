@@ -390,10 +390,11 @@ class UserModel {
           password_hash,
           name,
           position,
+          role,
           role_id,
           account_level,
           timezone
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING *
       `;
       
@@ -404,6 +405,7 @@ class UserModel {
         userData.password_hash,
         userData.name,
         userData.position,
+        userData.role || 'Staff',
         userData.role_id,
         userData.account_level || 'store',
         userData.timezone || 'Asia/Jakarta'

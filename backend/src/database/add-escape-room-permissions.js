@@ -1,5 +1,6 @@
+// 密室权限添加 - node src/database/add-escape-room-permissions.js
 require('dotenv').config();
-const pool = require('./src/database/connection');
+const pool = require('./connection');
 
 async function addEscapeRoomPermissions() {
   const client = await pool.connect();
@@ -21,7 +22,7 @@ async function addEscapeRoomPermissions() {
     const moduleId = moduleResult.rows[0].id;
     console.log('✅ 密室管理模块已添加，ID:', moduleId);
     
-    // 2. 添加密室权限项
+    // 2. 添加密室权限项（与permissions.js配置保持一致）
     const permissions = [
       { name: 'view', display_name: '查看密室', key: 'escape_room.view' },
       { name: 'create', display_name: '创建密室', key: 'escape_room.create' },

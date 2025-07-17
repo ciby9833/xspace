@@ -9,7 +9,9 @@ class OrderModel {
         s.name as store_name,
         r.name as room_name,
         sc.name as script_name,
+        sc.supported_languages as script_supported_languages,
         er.name as escape_room_name,
+        er.supported_languages as escape_room_supported_languages,
         gu.name as game_host_name,
         nu.name as npc_name,
         pu.name as pic_name,
@@ -104,13 +106,17 @@ class OrderModel {
       paramIndex++;
     }
 
+    // 🆕 修改语言筛选逻辑：按剧本/密室支持的语言筛选
     if (filters.language) {
-      query += ` AND o.language = $${paramIndex}`;
+      query += ` AND (
+        (o.order_type = '剧本杀' AND sc.supported_languages::jsonb ? $${paramIndex}) OR
+        (o.order_type = '密室' AND er.supported_languages::jsonb ? $${paramIndex})
+      )`;
       params.push(filters.language);
       paramIndex++;
     }
 
-    query += ` GROUP BY o.id, c.name, s.name, r.name, sc.name, er.name, gu.name, nu.name, pu.name, ppu.name, cu.name, uu.name
+    query += ` GROUP BY o.id, c.name, s.name, r.name, sc.name, sc.supported_languages, er.name, er.supported_languages, gu.name, nu.name, pu.name, ppu.name, cu.name, uu.name
                ORDER BY o.order_date DESC, o.created_at DESC`;
 
     const result = await pool.query(query, params);
@@ -124,7 +130,9 @@ class OrderModel {
         s.name as store_name,
         r.name as room_name,
         sc.name as script_name,
+        sc.supported_languages as script_supported_languages,
         er.name as escape_room_name,
+        er.supported_languages as escape_room_supported_languages,
         gu.name as game_host_name,
         nu.name as npc_name,
         pu.name as pic_name,
@@ -176,6 +184,18 @@ class OrderModel {
       paramIndex++;
     }
 
+    if (filters.payment_status) {
+      query += ` AND o.payment_status = $${paramIndex}`;
+      params.push(filters.payment_status);
+      paramIndex++;
+    }
+
+    if (filters.booking_type) {
+      query += ` AND o.booking_type = $${paramIndex}`;
+      params.push(filters.booking_type);
+      paramIndex++;
+    }
+
     if (filters.start_date) {
       query += ` AND o.order_date >= $${paramIndex}`;
       params.push(filters.start_date);
@@ -200,7 +220,17 @@ class OrderModel {
       paramIndex++;
     }
 
-    query += ` GROUP BY o.id, s.name, r.name, sc.name, er.name, gu.name, nu.name, pu.name, ppu.name, cu.name, uu.name
+    // 🆕 修改语言筛选逻辑：按剧本/密室支持的语言筛选
+    if (filters.language) {
+      query += ` AND (
+        (o.order_type = '剧本杀' AND sc.supported_languages::jsonb ? $${paramIndex}) OR
+        (o.order_type = '密室' AND er.supported_languages::jsonb ? $${paramIndex})
+      )`;
+      params.push(filters.language);
+      paramIndex++;
+    }
+
+    query += ` GROUP BY o.id, s.name, r.name, sc.name, sc.supported_languages, er.name, er.supported_languages, gu.name, nu.name, pu.name, ppu.name, cu.name, uu.name
                ORDER BY o.order_date DESC, o.created_at DESC`;
 
     const result = await pool.query(query, params);
@@ -215,7 +245,9 @@ class OrderModel {
         s.name as store_name,
         r.name as room_name,
         sc.name as script_name,
+        sc.supported_languages as script_supported_languages,
         er.name as escape_room_name,
+        er.supported_languages as escape_room_supported_languages,
         gu.name as game_host_name,
         nu.name as npc_name,
         pu.name as pic_name,
@@ -259,7 +291,7 @@ class OrderModel {
       params.push(companyId);
     }
 
-    query += ` GROUP BY o.id, c.name, s.name, r.name, sc.name, er.name, gu.name, nu.name, pu.name, ppu.name, cu.name, uu.name`;
+    query += ` GROUP BY o.id, c.name, s.name, r.name, sc.name, sc.supported_languages, er.name, er.supported_languages, gu.name, nu.name, pu.name, ppu.name, cu.name, uu.name`;
 
     const result = await pool.query(query, params);
     return result.rows[0] || null;
@@ -276,7 +308,7 @@ class OrderModel {
         company_id, store_id, room_id, order_type, order_date, weekday, language,
         start_time, end_time, duration, customer_name, customer_phone, player_count,
         internal_support, script_id, script_name, game_host_id, npc_id,
-        escape_room_id, escape_room_name, is_group_booking, include_photos, include_cctv,
+        escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
         booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
         promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
         status, created_by, images,
@@ -293,7 +325,7 @@ class OrderModel {
           company_id, store_id, room_id, order_type, order_date, weekday, language,
           start_time, end_time, duration, customer_name, customer_phone, player_count,
           internal_support, script_id, script_name, game_host_id, npc_id,
-          escape_room_id, escape_room_name, is_group_booking, include_photos, include_cctv,
+          escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
           booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
           promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
           status, created_by,
@@ -304,7 +336,7 @@ class OrderModel {
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
           $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38,
-          $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54
+          $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55
         ) RETURNING id
       `;
 
@@ -312,7 +344,7 @@ class OrderModel {
         company_id, store_id, room_id, order_type, order_date, weekday, language,
         start_time, end_time, duration, customer_name, customer_phone, player_count,
         internal_support, script_id, script_name, game_host_id, npc_id,
-        escape_room_id, escape_room_name, is_group_booking, include_photos, include_cctv,
+        escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
         booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
         promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
         status, created_by,
@@ -622,10 +654,126 @@ class OrderModel {
       `;
       const usersResult = await client.query(usersQuery, [storeId]);
 
+      // 🔧 处理密室数据的 JSON 字段
+      const processedEscapeRooms = escapeRoomsResult.rows.map(escapeRoom => {
+        // 处理 supported_languages 字段
+        let supportedLanguages = [];
+        if (escapeRoom.supported_languages) {
+          if (typeof escapeRoom.supported_languages === 'string') {
+            try {
+              supportedLanguages = JSON.parse(escapeRoom.supported_languages);
+            } catch (e) {
+              console.warn('解析密室语言失败:', e);
+              supportedLanguages = ['IND'];
+            }
+          } else if (Array.isArray(escapeRoom.supported_languages)) {
+            supportedLanguages = escapeRoom.supported_languages;
+          }
+        }
+        if (!supportedLanguages || supportedLanguages.length === 0) {
+          supportedLanguages = ['IND'];
+        }
+
+        // 处理 cover_images 字段
+        let coverImages = [];
+        if (escapeRoom.cover_images) {
+          if (typeof escapeRoom.cover_images === 'string') {
+            try {
+              coverImages = JSON.parse(escapeRoom.cover_images);
+            } catch (e) {
+              console.warn('解析密室图片失败:', e);
+              coverImages = [];
+            }
+          } else if (Array.isArray(escapeRoom.cover_images)) {
+            coverImages = escapeRoom.cover_images;
+          }
+        }
+
+        // 处理 npc_roles 字段
+        let npcRoles = [];
+        if (escapeRoom.npc_roles) {
+          if (typeof escapeRoom.npc_roles === 'string') {
+            try {
+              npcRoles = JSON.parse(escapeRoom.npc_roles);
+            } catch (e) {
+              console.warn('解析密室NPC角色失败:', e);
+              npcRoles = [];
+            }
+          } else if (Array.isArray(escapeRoom.npc_roles)) {
+            npcRoles = escapeRoom.npc_roles;
+          }
+        }
+
+        return {
+          ...escapeRoom,
+          supported_languages: supportedLanguages,
+          cover_images: coverImages,
+          npc_roles: npcRoles
+        };
+      });
+
+      // 🔧 处理剧本数据的 JSON 字段
+      const processedScripts = scriptsResult.rows.map(script => {
+        // 处理 supported_languages 字段
+        let supportedLanguages = [];
+        if (script.supported_languages) {
+          if (typeof script.supported_languages === 'string') {
+            try {
+              supportedLanguages = JSON.parse(script.supported_languages);
+            } catch (e) {
+              console.warn('解析剧本语言失败:', e);
+              supportedLanguages = ['IND'];
+            }
+          } else if (Array.isArray(script.supported_languages)) {
+            supportedLanguages = script.supported_languages;
+          }
+        }
+        if (!supportedLanguages || supportedLanguages.length === 0) {
+          supportedLanguages = ['IND'];
+        }
+
+        // 处理 images 字段
+        let images = [];
+        if (script.images) {
+          if (typeof script.images === 'string') {
+            try {
+              images = JSON.parse(script.images);
+            } catch (e) {
+              console.warn('解析剧本图片失败:', e);
+              images = [];
+            }
+          } else if (Array.isArray(script.images)) {
+            images = script.images;
+          }
+        }
+
+        // 处理 tags 字段
+        let tags = [];
+        if (script.tags) {
+          if (typeof script.tags === 'string') {
+            try {
+              tags = JSON.parse(script.tags);
+            } catch (e) {
+              console.warn('解析剧本标签失败:', e);
+              tags = [];
+            }
+          } else if (Array.isArray(script.tags)) {
+            tags = script.tags;
+          }
+        }
+
+        return {
+          ...script,
+          supported_languages: supportedLanguages,
+          images: images,
+          tags: tags
+        };
+      });
+
       return {
         store: store,
-        scripts: scriptsResult.rows,
-        escape_rooms: escapeRoomsResult.rows,
+        scripts: processedScripts,
+        escape_rooms: processedEscapeRooms,
         rooms: roomsResult.rows,
         users: usersResult.rows
       };
@@ -644,7 +792,9 @@ class OrderModel {
         o.order_type,
         o.status,
         sc.name as script_name,
-        er.name as escape_room_name
+        sc.supported_languages as script_supported_languages,
+        er.name as escape_room_name,
+        er.supported_languages as escape_room_supported_languages
       FROM orders o
       LEFT JOIN scripts sc ON o.script_id = sc.id
       LEFT JOIN escape_rooms er ON o.escape_room_id = er.id
@@ -669,7 +819,9 @@ class OrderModel {
         o.order_type,
         o.status,
         sc.name as script_name,
-        er.name as escape_room_name
+        sc.supported_languages as script_supported_languages,
+        er.name as escape_room_name,
+        er.supported_languages as escape_room_supported_languages
       FROM orders o
       LEFT JOIN scripts sc ON o.script_id = sc.id
       LEFT JOIN escape_rooms er ON o.escape_room_id = er.id
@@ -698,8 +850,14 @@ class OrderModel {
   // 🆕 检查房间时间冲突
   async checkRoomTimeConflicts(roomId, date, startTime, endTime, excludeOrderId = null) {
     let query = `
-      SELECT o.id, o.customer_name, o.start_time, o.end_time, o.order_type, o.status
+      SELECT o.id, o.customer_name, o.start_time, o.end_time, o.order_type, o.status,
+        sc.name as script_name,
+        sc.supported_languages as script_supported_languages,
+        er.name as escape_room_name,
+        er.supported_languages as escape_room_supported_languages
       FROM orders o
+      LEFT JOIN scripts sc ON o.script_id = sc.id
+      LEFT JOIN escape_rooms er ON o.escape_room_id = er.id
       WHERE o.room_id = $1 
         AND o.order_date = $2 
         AND o.is_active = true

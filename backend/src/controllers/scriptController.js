@@ -83,6 +83,9 @@ class ScriptController {
         // 🆕 标签筛选
         tag: req.query.tag,
         
+        // 🆕 语言筛选
+        language: req.query.language,
+        
         // 🆕 公司ID（平台管理员使用）
         company_id: req.query.company_id
       };

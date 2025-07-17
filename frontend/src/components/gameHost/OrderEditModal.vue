@@ -49,12 +49,12 @@
           </a-form-item>
         </a-col>
         <a-col :span="8">
-          <a-form-item label="客户语言" name="language">
-            <a-select v-model:value="form.language">
-              <a-select-option value="CN">中文</a-select-option>
-              <a-select-option value="EN">英语</a-select-option>
-              <a-select-option value="IND">印尼语</a-select-option>
-            </a-select>
+          <a-form-item label="支持语言">
+            <a-input 
+              :value="getDisplayLanguages(order)"
+              disabled
+              placeholder="剧本/密室支持语言"
+            />
           </a-form-item>
         </a-col>
       </a-row>
@@ -169,7 +169,6 @@ const availableEscapeRooms = ref([])
 const form = reactive({
   player_count: 1,
   support_player_count: 0,
-  language: 'CN',
   internal_support: false,
   room_id: null,
   script_id: null,
@@ -185,9 +184,6 @@ const rules = {
   ],
   support_player_count: [
     { type: 'number', min: 0, max: 10, message: '补位人数必须在0-10之间' }
-  ],
-  language: [
-    { required: true, message: '请选择客户语言' }
   ],
   room_id: [
     { required: true, message: '请选择房间' }
@@ -215,7 +211,6 @@ watch(() => props.order, (newOrder) => {
     Object.assign(form, {
       player_count: newOrder.player_count || 1,
       support_player_count: newOrder.support_player_count || 0,
-      language: newOrder.language || 'CN',
       internal_support: newOrder.internal_support || false,
       room_id: newOrder.room_id,
       script_id: newOrder.script_id,
@@ -306,6 +301,42 @@ const handleSubmit = async () => {
 
 const handleCancel = () => {
   visible.value = false
+}
+
+// 获取显示语言
+const getDisplayLanguages = (order) => {
+  if (!order) return '未知'
+  
+  // 优先使用display_languages字段
+  if (order.display_languages) {
+    return order.display_languages
+  }
+  
+  // 兼容旧数据
+  const languages = []
+  if (order.script_supported_languages) {
+    const scriptLangs = Array.isArray(order.script_supported_languages) 
+      ? order.script_supported_languages 
+      : [order.script_supported_languages]
+    languages.push(...scriptLangs.map(lang => getLanguageText(lang)))
+  }
+  if (order.escape_room_supported_languages) {
+    const roomLangs = Array.isArray(order.escape_room_supported_languages) 
+      ? order.escape_room_supported_languages 
+      : [order.escape_room_supported_languages]
+    languages.push(...roomLangs.map(lang => getLanguageText(lang)))
+  }
+  
+  return languages.length > 0 ? languages.join(' / ') : '未知'
+}
+
+const getLanguageText = (language) => {
+  const languageMap = {
+    'CN': '中文',
+    'EN': '英语',
+    'IND': '印尼语'
+  }
+  return languageMap[language] || language
 }
 
 // 清理数据
