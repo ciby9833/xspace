@@ -130,6 +130,44 @@
         </a-col>
       </a-row>
 
+      <!-- NPC信息 -->
+      <a-row :gutter="16" v-if="order.order_type === '密室'">
+        <a-col :span="8">
+          <a-form-item label="NPC数量">
+            <a-input-number
+              :value="selectedEscapeRoom?.npc_count || 0"
+              :min="0"
+              :max="10"
+              style="width: 100%"
+              disabled
+              placeholder="根据密室自动设置"
+            />
+          </a-form-item>
+        </a-col>
+        <a-col :span="16">
+          <a-form-item label="NPC角色选择" name="selected_npc_roles">
+            <a-select
+              v-model:value="form.selected_npc_roles"
+              mode="multiple"
+              placeholder="从密室NPC角色中选择"
+              style="width: 100%"
+              :disabled="!selectedEscapeRoom || !selectedEscapeRoom.npc_roles || selectedEscapeRoom.npc_roles.length === 0"
+            >
+              <a-select-option
+                v-for="role in selectedEscapeRoom?.npc_roles || []"
+                :key="role"
+                :value="role"
+              >
+                {{ role }}
+              </a-select-option>
+            </a-select>
+            <div v-if="selectedEscapeRoom?.npc_roles && selectedEscapeRoom.npc_roles.length > 0" style="font-size: 12px; color: #666; margin-top: 4px;">
+              可选角色：{{ selectedEscapeRoom.npc_roles.join(', ') }}
+            </div>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
       <a-form-item label="Game Host备注" name="game_host_notes">
         <a-textarea
           v-model:value="form.game_host_notes"
@@ -164,6 +202,7 @@ const escapeRoomsLoading = ref(false)
 const availableRooms = ref([])
 const availableScripts = ref([])
 const availableEscapeRooms = ref([])
+const selectedEscapeRoom = ref(null) // 用于存储当前选中的密室信息
 
 // 表单数据
 const form = reactive({
@@ -173,6 +212,7 @@ const form = reactive({
   room_id: null,
   script_id: null,
   escape_room_id: null,
+  selected_npc_roles: [], // 新增：用于存储选中的NPC角色
   game_host_notes: ''
 })
 
@@ -194,6 +234,9 @@ const rules = {
   escape_room_id: [
     { required: true, message: '请选择密室' }
   ],
+  selected_npc_roles: [
+    { type: 'array', message: '选择的NPC角色必须是数组格式' }
+  ],
   game_host_notes: [
     { max: 1000, message: '备注不能超过1000个字符' }
   ]
@@ -205,6 +248,20 @@ const visible = computed({
   set: (value) => emit('update:visible', value)
 })
 
+// 监听密室选择变化，更新NPC角色选项
+watch(() => form.escape_room_id, async (newEscapeRoomId) => {
+  if (newEscapeRoomId) {
+    selectedEscapeRoom.value = availableEscapeRooms.value.find(room => room.id === newEscapeRoomId)
+    // 如果订单已有NPC角色，保留它们；否则默认选择所有可用角色
+    if (!form.selected_npc_roles || form.selected_npc_roles.length === 0) {
+      form.selected_npc_roles = selectedEscapeRoom.value?.npc_roles || []
+    }
+  } else {
+    selectedEscapeRoom.value = null
+    form.selected_npc_roles = []
+  }
+}, { immediate: true }) // immediate: true 确保在组件挂载时也执行一次
+
 // 监听订单变化，初始化表单
 watch(() => props.order, (newOrder) => {
   if (newOrder) {
@@ -215,8 +272,16 @@ watch(() => props.order, (newOrder) => {
       room_id: newOrder.room_id,
       script_id: newOrder.script_id,
       escape_room_id: newOrder.escape_room_id,
+      selected_npc_roles: newOrder.escape_room_npc_roles || [], // 使用escape_room_npc_roles字段
       game_host_notes: newOrder.game_host_notes || ''
     })
+    
+    // 设置当前选中的密室信息
+    if (newOrder.escape_room_id) {
+      setTimeout(() => {
+        selectedEscapeRoom.value = availableEscapeRooms.value.find(room => room.id === newOrder.escape_room_id)
+      }, 100)
+    }
   }
 }, { immediate: true })
 
@@ -275,12 +340,26 @@ const handleSubmit = async () => {
     // 准备更新数据
     const updateData = { ...form }
     
+    // 🆕 处理支付类型字段 - 根据订单的is_free字段设置free_pay
+    if (props.order.is_free !== undefined) {
+      updateData.free_pay = props.order.is_free ? 'Free' : 'Pay'
+    }
+    
+    // 🆕 处理NPC角色数据
+    if (props.order.order_type === '密室' && updateData.selected_npc_roles) {
+      updateData.escape_room_npc_roles = updateData.selected_npc_roles
+    }
+    
     // 根据订单类型移除不需要的字段
     if (props.order.order_type === '剧本杀') {
       delete updateData.escape_room_id
+      delete updateData.selected_npc_roles
     } else if (props.order.order_type === '密室') {
       delete updateData.script_id
     }
+    
+    // 清理临时字段
+    delete updateData.selected_npc_roles
     
     await gameHostAPI.updateOrder(props.order.id, updateData)
     
@@ -348,6 +427,7 @@ watch(visible, (newVisible) => {
     availableRooms.value = []
     availableScripts.value = []
     availableEscapeRooms.value = []
+    selectedEscapeRoom.value = null
   }
 })
 </script>

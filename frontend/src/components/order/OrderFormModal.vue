@@ -364,6 +364,45 @@
             </a-form-item>
           </a-col>
         </a-row>
+        
+        <!-- NPC信息 -->
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item label="NPC数量">
+              <a-input-number 
+                :value="selectedEscapeRoom?.npc_count || 0"
+                :min="0" 
+                :max="10" 
+                placeholder="根据密室自动设置"
+                style="width: 100%"
+                disabled
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="16">
+            <a-form-item label="NPC角色选择" name="selected_npc_roles">
+              <a-select 
+                v-model:value="form.selected_npc_roles" 
+                mode="multiple"
+                placeholder="从密室NPC角色中选择"
+                style="width: 100%"
+                :disabled="!selectedEscapeRoom || !selectedEscapeRoom.npc_roles || selectedEscapeRoom.npc_roles.length === 0"
+              >
+                <a-select-option
+                  v-for="role in selectedEscapeRoom?.npc_roles || []"
+                  :key="role"
+                  :value="role"
+                >
+                  {{ role }}
+                </a-select-option>
+              </a-select>
+              <div v-if="selectedEscapeRoom?.npc_roles && selectedEscapeRoom.npc_roles.length > 0" style="font-size: 12px; color: #666; margin-top: 4px;">
+                可选角色：{{ selectedEscapeRoom.npc_roles.join(', ') }}
+              </div>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
         <a-row :gutter="16">
           <a-col :span="8">
             <a-form-item name="is_group_booking">
@@ -515,6 +554,10 @@ const resetForm = () => {
       form[key] = 'Free'
     } else if (key === 'total_amount' || key === 'promo_quantity') {
       form[key] = 0
+    } else if (key === 'unit_price' || key === 'prepaid_amount' || key === 'remaining_amount') {
+      form[key] = 0
+    } else if (key === 'selected_npc_roles') {
+      form[key] = []
     } else if (typeof form[key] === 'boolean') {
       form[key] = false
     } else {
@@ -554,7 +597,9 @@ const form = reactive({
   // 🆕 新增金额字段
   unit_price: 0,
   prepaid_amount: 0,
-  remaining_amount: 0
+  remaining_amount: 0,
+  // 🆕 新增密室NPC角色选择
+  selected_npc_roles: []
 })
 
 // 🆕 更新的表单验证规则
@@ -611,6 +656,9 @@ const rules = {
         return Promise.resolve()
       }
     }
+  ],
+  selected_npc_roles: [
+    { type: 'array', message: '选择的NPC角色必须是数组格式' }
   ]
 }
 
@@ -649,6 +697,11 @@ watch(() => props.formData, async (newData) => {
     // 🆕 处理支付类型映射
     if (newData.is_free !== undefined) {
       form.free_pay = newData.is_free ? 'Free' : 'Pay'
+    }
+    
+    // 🆕 处理NPC角色数据
+    if (newData.escape_room_npc_roles) {
+      form.selected_npc_roles = newData.escape_room_npc_roles
     }
     
     // 🆕 加载支付凭证图片
@@ -708,6 +761,21 @@ watch([() => form.order_date, () => form.start_time, () => form.end_time],
   }, { deep: true }
 )
 
+// 🆕 监听密室选择变化
+watch(() => form.escape_room_id, (newEscapeRoomId) => {
+  if (newEscapeRoomId) {
+    const escapeRoom = escapeRoomList.value.find(room => room.id === newEscapeRoomId)
+    if (escapeRoom && escapeRoom.npc_roles) {
+      // 默认选择所有可用的NPC角色
+      form.selected_npc_roles = [...escapeRoom.npc_roles]
+    } else {
+      form.selected_npc_roles = []
+    }
+  } else {
+    form.selected_npc_roles = []
+  }
+})
+
 // 🆕 监听人数变化，自动重新计算总金额
 watch(() => form.player_count, () => {
   if (form.free_pay === 'Pay' && form.unit_price > 0) {
@@ -730,6 +798,11 @@ watch(() => form.payment_status, (newStatus) => {
     form.prepaid_amount = 0
     calculateRemainingAmount()
   }
+})
+
+// 🆕 计算属性：获取当前选择的密室信息
+const selectedEscapeRoom = computed(() => {
+  return escapeRoomList.value.find(room => room.id === form.escape_room_id)
 })
 
 // 生命周期
@@ -1025,10 +1098,15 @@ const handleSubmit = async () => {
     }
 
     // 🆕 处理支付类型转换
-    submitData.is_free = submitData.free_pay === 'Free'
+    // submitData.is_free = submitData.free_pay === 'Free'  // 注释掉，保留free_pay字段给后端
     
     // 🆕 添加默认语言
     submitData.language = 'IND'
+
+    // 🆕 处理NPC角色数据
+    if (submitData.order_type === '密室' && submitData.selected_npc_roles) {
+      submitData.escape_room_npc_roles = submitData.selected_npc_roles
+    }
 
     // 清理不需要的字段
     if (submitData.order_type === '剧本杀') {
@@ -1036,9 +1114,14 @@ const handleSubmit = async () => {
       delete submitData.is_group_booking
       delete submitData.include_photos
       delete submitData.include_cctv
+      delete submitData.selected_npc_roles
     } else if (submitData.order_type === '密室') {
       delete submitData.script_id
     }
+    
+    // 清理临时字段
+    // delete submitData.free_pay  // 注释掉，后端需要这个字段
+    delete submitData.selected_npc_roles
 
     // 如果是编辑模式，包含订单ID
     if (props.isEdit && props.formData?.id) {

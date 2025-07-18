@@ -115,6 +115,21 @@
               {{ order.is_group_booking ? '是' : '否' }}
             </a-tag>
           </a-descriptions-item>
+          <a-descriptions-item label="NPC数量">
+            {{ order.npc_count || 0 }}个
+          </a-descriptions-item>
+          <a-descriptions-item label="NPC角色" v-if="order.npc_roles && order.npc_roles.length > 0">
+            <div class="npc-roles">
+              <a-tag 
+                v-for="role in order.npc_roles" 
+                :key="role"
+                color="purple"
+                class="npc-role-tag"
+              >
+                {{ role }}
+              </a-tag>
+            </div>
+          </a-descriptions-item>
         </a-descriptions>
       </a-card>
 
@@ -366,6 +381,16 @@ const handleCancel = () => {
 .image-type {
   font-size: 11px;
   color: #666;
+}
+
+.npc-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.npc-role-tag {
+  font-size: 12px;
 }
 
 /* 响应式设计 */

@@ -203,7 +203,13 @@
               <div v-if="record.game_host_name" class="host-name">
                 {{ record.game_host_name }}
               </div>
-              <div v-else class="no-host">
+              <div v-if="record.escape_room_npc_roles && record.escape_room_npc_roles.length > 0" class="npc-info">
+                <a-tag size="small" color="purple">{{ record.escape_room_npc_roles.length }}个NPC</a-tag>
+              </div>
+              <div v-if="record.escape_room_npc_roles && record.escape_room_npc_roles.length > 0" class="npc-roles-compact">
+                <div class="npc-roles-text">{{ record.escape_room_npc_roles.slice(0, 2).join(', ') }}{{ record.escape_room_npc_roles.length > 2 ? '...' : '' }}</div>
+              </div>
+              <div v-if="!record.game_host_name && (!record.escape_room_npc_roles || record.escape_room_npc_roles.length === 0)" class="no-host">
                 <span>未分配</span>
               </div>
             </div>
@@ -367,9 +373,23 @@
           </template>
           
           <!-- 工作人员信息 -->
-          <template v-if="selectedOrder.game_host_name || selectedOrder.npc_name || selectedOrder.pic_name || selectedOrder.pic_payment">
+          <template v-if="selectedOrder.game_host_name || selectedOrder.npc_name || selectedOrder.pic_name || selectedOrder.pic_payment || (selectedOrder.escape_room_npc_roles && selectedOrder.escape_room_npc_roles.length > 0)">
             <a-descriptions-item v-if="selectedOrder.game_host_name" label="Game Host">{{ selectedOrder.game_host_name }}</a-descriptions-item>
             <a-descriptions-item v-if="selectedOrder.npc_name" label="NPC">{{ selectedOrder.npc_name }}</a-descriptions-item>
+            <a-descriptions-item v-if="selectedOrder.escape_room_npc_roles && selectedOrder.escape_room_npc_roles.length > 0" label="NPC数量">{{ selectedOrder.escape_room_npc_roles.length }}个</a-descriptions-item>
+            <a-descriptions-item v-if="selectedOrder.escape_room_npc_roles && selectedOrder.escape_room_npc_roles.length > 0" label="NPC角色" :span="2">
+              <div class="npc-roles">
+                <a-tag 
+                  v-for="role in selectedOrder.escape_room_npc_roles" 
+                  :key="role"
+                  color="purple"
+                  size="small"
+                  style="margin-right: 4px; margin-bottom: 4px;"
+                >
+                  {{ role }}
+                </a-tag>
+              </div>
+            </a-descriptions-item>
             <a-descriptions-item v-if="selectedOrder.pic_name" label="PIC负责人">{{ selectedOrder.pic_name }}</a-descriptions-item>
             <a-descriptions-item v-if="selectedOrder.pic_payment" label="PIC Payment" :span="selectedOrder.pic_name ? 1 : 2">{{ selectedOrder.pic_payment }}</a-descriptions-item>
           </template>
@@ -1325,6 +1345,29 @@ const nextProofImage = () => {
   font-size: 12px;
   color: #333;
   font-weight: 500;
+}
+
+.npc-info {
+  margin-top: 4px;
+}
+
+.npc-roles-compact {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #666;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.npc-roles-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .no-host {
