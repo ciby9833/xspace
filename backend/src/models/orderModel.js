@@ -106,6 +106,22 @@ class OrderModel {
       paramIndex++;
     }
 
+    // 🆕 多笔付款筛选
+    if (filters.enable_multi_payment !== undefined) {
+      query += ` AND o.enable_multi_payment = $${paramIndex}`;
+      params.push(filters.enable_multi_payment);
+      paramIndex++;
+    }
+
+    // 🆕 角色折扣筛选
+    if (filters.has_role_discount !== undefined) {
+      if (filters.has_role_discount) {
+        query += ` AND o.total_players_with_discount > 0`;
+      } else {
+        query += ` AND (o.total_players_with_discount = 0 OR o.total_players_with_discount IS NULL)`;
+      }
+    }
+
     // 🆕 修改语言筛选逻辑：按剧本/密室支持的语言筛选
     if (filters.language) {
       query += ` AND (
@@ -220,6 +236,22 @@ class OrderModel {
       paramIndex++;
     }
 
+    // 🆕 多笔付款筛选
+    if (filters.enable_multi_payment !== undefined) {
+      query += ` AND o.enable_multi_payment = $${paramIndex}`;
+      params.push(filters.enable_multi_payment);
+      paramIndex++;
+    }
+
+    // 🆕 角色折扣筛选
+    if (filters.has_role_discount !== undefined) {
+      if (filters.has_role_discount) {
+        query += ` AND o.total_players_with_discount > 0`;
+      } else {
+        query += ` AND (o.total_players_with_discount = 0 OR o.total_players_with_discount IS NULL)`;
+      }
+    }
+
     // 🆕 修改语言筛选逻辑：按剧本/密室支持的语言筛选
     if (filters.language) {
       query += ` AND (
@@ -311,7 +343,9 @@ class OrderModel {
         escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
         booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
         promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
-        status, created_by, images,
+        status, created_by, images, selected_role_templates,
+        // 🆕 多笔支付字段
+        enable_multi_payment,
         // 🆕 新增财务字段
         original_price, discount_price, discount_amount, prepaid_amount, remaining_amount,
         tax_amount, service_fee, manual_discount, activity_discount, member_discount,
@@ -328,7 +362,7 @@ class OrderModel {
           escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
           booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
           promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
-          status, created_by,
+          status, created_by, selected_role_templates, enable_multi_payment,
           original_price, discount_price, discount_amount, prepaid_amount, remaining_amount,
           tax_amount, service_fee, manual_discount, activity_discount, member_discount,
           package_discount, refund_amount, refund_reason, refund_date,
@@ -336,7 +370,7 @@ class OrderModel {
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
           $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38,
-          $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55
+          $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57
         ) RETURNING id
       `;
 
@@ -347,7 +381,8 @@ class OrderModel {
         escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
         booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
         promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
-        status, created_by,
+        status, created_by, selected_role_templates ? JSON.stringify(selected_role_templates) : null,
+        enable_multi_payment || false, // 🆕 多笔支付字段
         // 🆕 新增财务字段值
         original_price || 0, discount_price || 0, discount_amount || 0, 
         prepaid_amount || 0, remaining_amount || 0, tax_amount || 0, service_fee || 0,
@@ -425,7 +460,26 @@ class OrderModel {
       Object.keys(updateData).forEach(key => {
         if (updateData[key] !== undefined && key !== 'images') {
           fields.push(`${key} = $${paramIndex}`);
-          values.push(updateData[key]);
+          
+          // 🆕 处理 JSON 字段的特殊序列化
+          if (key === 'selected_role_templates') {
+            // 如果是对象或数组，转换为 JSON 字符串；如果已经是字符串或null，直接使用
+            if (updateData[key] && typeof updateData[key] === 'object') {
+              values.push(JSON.stringify(updateData[key]));
+            } else {
+              values.push(updateData[key]);
+            }
+          } else if (key === 'escape_room_npc_roles') {
+            // 处理密室NPC角色字段
+            if (updateData[key] && typeof updateData[key] === 'object') {
+              values.push(JSON.stringify(updateData[key]));
+            } else {
+              values.push(updateData[key]);
+            }
+          } else {
+            values.push(updateData[key]);
+          }
+          
           paramIndex++;
         }
       });

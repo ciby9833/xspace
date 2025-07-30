@@ -12,6 +12,11 @@ const roomRoutes = require('./room');
 const orderRoutes = require('./order');
 const permissionRoutes = require('./permission');
 const gameHostRoutes = require('./gameHost');
+// 新增多人支付系统路由
+const orderPlayerRoutes = require('./orderPlayerRoutes');
+const orderPaymentRoutes = require('./orderPaymentRoutes');
+const rolePricingTemplateRoutes = require('./rolePricingTemplateRoutes');
+const pricingCalendarRoutes = require('./pricingCalendarRoutes');
 
 // 注册路由
 router.use('/auth', authRoutes);
@@ -24,6 +29,11 @@ router.use('/room', roomRoutes);
 router.use('/order', orderRoutes);
 router.use('/permissions', permissionRoutes);
 router.use('/game-host', gameHostRoutes);
+// 多人支付系统路由
+router.use('/order-players', orderPlayerRoutes);
+router.use('/order-payments', orderPaymentRoutes);
+router.use('/role-pricing-templates', rolePricingTemplateRoutes);
+router.use('/pricing-calendar', pricingCalendarRoutes);
 
 // 健康检查路由（可以直接在这里定义简单路由）
 router.get('/health', (req, res) => {
@@ -75,7 +85,12 @@ router.get('/info', (req, res) => {
       script: '/api/script - 剧本管理',
       escape_room: '/api/escape-room - 密室管理',
       room: '/api/room - 房间管理',
-      order: '/api/order - 订单管理'
+      order: '/api/order - 订单管理',
+      // 多人支付系统
+      order_players: '/api/order-players - 订单参与玩家管理',
+      order_payments: '/api/order-payments - 支付记录管理',
+      role_pricing: '/api/role-pricing-templates - 角色定价模板管理',
+      pricing_calendar: '/api/pricing-calendar - 定价日历管理'
     },
     timestamp: new Date().toISOString()
   });

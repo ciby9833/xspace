@@ -156,7 +156,9 @@ export const useAuthStore = defineStore('auth', () => {
       '/orders': 'order.view',
       '/booking': 'order.view',  // 预订界面使用订单查看权限
       '/game-host': 'game_host.view',  // Game Host界面权限
-      '/permissions': 'system.role'  // 修正：权限管理页面需要 system.role 权限
+      '/permissions': 'system.role',  // 修正：权限管理页面需要 system.role 权限
+      '/role-pricing': 'role.pricing.view',  // 角色定价模板权限
+      '/pricing-calendar': 'pricing.calendar.view'  // 定价日历权限
     }
     
     const requiredPermission = menuPermissions[menuKey]

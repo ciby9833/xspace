@@ -118,6 +118,432 @@
         </a-col>
       </a-row>
 
+      <!-- 🆕 项目选择区域 -->
+      <a-divider orientation="left">
+        <span class="section-title">项目选择</span>
+      </a-divider>
+
+      <!-- 剧本杀专用字段 -->
+      <div v-if="form.order_type === '剧本杀'" class="project-section">
+        <a-row :gutter="16">
+          <a-col :span="24">
+            <a-form-item label="剧本" name="script_id">
+              <a-select 
+                v-model:value="form.script_id" 
+                placeholder="选择剧本"
+                :loading="loadingResources"
+                :disabled="!form.store_id"
+                show-search
+                option-filter-prop="children"
+                @change="handleScriptChange"
+              >
+                <a-select-option 
+                  v-for="script in scriptList" 
+                  :key="script.id" 
+                  :value="script.id"
+                >
+                  {{ script.name }} (Rp {{ script.store_price?.toLocaleString() || script.price?.toLocaleString() || '价格待定' }})
+                </a-select-option>
+              </a-select>
+              <div v-if="!form.store_id" class="help-text">
+                请先选择门店
+              </div>
+              <div v-else-if="loadingResources" class="help-text">
+                正在加载门店剧本...
+              </div>
+              <div v-else-if="scriptList.length === 0" class="help-text error">
+                该门店暂无可用剧本
+              </div>
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </div>
+
+      <!-- 密室专用字段 -->
+      <div v-if="form.order_type === '密室'" class="project-section">
+        <a-row :gutter="16">
+          <a-col :span="24">
+            <a-form-item label="密室主题" name="escape_room_id">
+              <a-select 
+                v-model:value="form.escape_room_id" 
+                placeholder="选择密室主题"
+                :loading="loadingResources"
+                :disabled="!form.store_id"
+                show-search
+                option-filter-prop="children"
+                @change="handleEscapeRoomChange"
+              >
+                <a-select-option 
+                  v-for="room in escapeRoomList" 
+                  :key="room.id" 
+                  :value="room.id"
+                >
+                  {{ room.name }} (Rp {{ room.store_price?.toLocaleString() || room.price?.toLocaleString() || '价格待定' }})
+                </a-select-option>
+              </a-select>
+              <div v-if="!form.store_id" class="help-text">
+                请先选择门店
+              </div>
+              <div v-else-if="loadingResources" class="help-text">
+                正在加载门店密室...
+              </div>
+              <div v-else-if="escapeRoomList.length === 0" class="help-text error">
+                该门店暂无可用密室
+              </div>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
+        <!-- NPC信息 -->
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item label="NPC数量">
+              <a-input-number 
+                :value="selectedEscapeRoom?.npc_count || 0"
+                :min="0" 
+                :max="10" 
+                placeholder="根据密室自动设置"
+                style="width: 100%"
+                disabled
+                class="readonly-field"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="16">
+            <a-form-item label="NPC角色选择" name="selected_npc_roles">
+              <a-select 
+                v-model:value="form.selected_npc_roles" 
+                mode="multiple"
+                placeholder="从密室NPC角色中选择"
+                style="width: 100%"
+                :disabled="!selectedEscapeRoom || !selectedEscapeRoom.npc_roles || selectedEscapeRoom.npc_roles.length === 0"
+              >
+                <a-select-option
+                  v-for="role in selectedEscapeRoom?.npc_roles || []"
+                  :key="role"
+                  :value="role"
+                >
+                  {{ role }}
+                </a-select-option>
+              </a-select>
+              <div v-if="selectedEscapeRoom?.npc_roles && selectedEscapeRoom.npc_roles.length > 0" class="help-text">
+                可选角色：{{ selectedEscapeRoom.npc_roles.join(', ') }}
+              </div>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item name="is_group_booking">
+              <a-checkbox v-model:checked="form.is_group_booking">拼团</a-checkbox>
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item name="include_photos">
+              <a-checkbox v-model:checked="form.include_photos">包含拍照</a-checkbox>
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item name="include_cctv">
+              <a-checkbox v-model:checked="form.include_cctv">包含监控</a-checkbox>
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </div>
+
+      <!-- 🆕 角色定价选择区域 -->
+      <div v-if="form.order_type && form.store_id && (form.script_id || form.escape_room_id)" class="role-pricing-wrapper">
+        <a-divider orientation="left">
+          <span class="section-title">角色定价选择</span>
+        </a-divider>
+        
+        <div class="role-pricing-section">
+          <!-- 加载状态 -->
+          <div v-if="loadingRolePricing" class="loading-container">
+            <a-spin />
+            <span>加载角色定价中...</span>
+          </div>
+
+          <!-- 角色定价卡片列表 -->
+          <div v-else-if="availableRoleTemplates.length > 0" class="role-cards-container">
+            <div class="role-cards-grid">
+              <div 
+                v-for="template in availableRoleTemplates" 
+                :key="template.id"
+                :class="[
+                  'role-card',
+                  { 'selected': isRoleTemplateSelected(template.id) }
+                ]"
+                @click="toggleRoleTemplate(template)"
+              >
+                <div class="role-card-header">
+                  <div class="role-info">
+                    <h5 class="role-name">{{ template.role_name }}</h5>
+                    <span class="role-discount">
+                      {{ formatDiscount(template.discount_type, template.discount_value, template.discount_display) }}
+                    </span>
+                  </div>
+                  <div class="role-checkbox">
+                    <a-checkbox :checked="isRoleTemplateSelected(template.id)" />
+                  </div>
+                </div>
+                
+                <div v-if="template.role_description" class="role-description">
+                  {{ template.role_description }}
+                </div>
+                
+                <!-- 人数输入（仅在选中时显示） -->
+                <div v-if="isRoleTemplateSelected(template.id)" class="player-count-input" @click.stop>
+                  <label>人数:</label>
+                  <a-input-number
+                    :value="getSelectedRolePlayerCount(template.id)"
+                    :min="1"
+                    :max="form.player_count || 20"
+                    @change="updateRolePlayerCount(template.id, $event)"
+                    size="small"
+                  />
+                </div>
+
+                <!-- 有效期显示 -->
+                <div v-if="template.validity_display" class="role-validity">
+                  <small class="validity-text">
+                    有效期: {{ template.validity_display }}
+                  </small>
+                </div>
+              </div>
+            </div>
+
+            <!-- 选择汇总 -->
+            <div v-if="selectedRoleTemplates.length > 0" class="selected-roles-summary">
+              <div class="summary-header">
+                <h5>已选择角色 ({{ selectedRoleTemplates.length }})</h5>
+              </div>
+              <div class="summary-items">
+                <div 
+                  v-for="selected in selectedRoleTemplates" 
+                  :key="selected.template_id"
+                  class="summary-item"
+                >
+                  <span class="role-name">{{ getRoleTemplateName(selected.template_id) }}</span>
+                  <span class="player-count">{{ selected.player_count }} 人</span>
+                  <span class="discount">{{ getRoleTemplateDiscount(selected.template_id) }}</span>
+                </div>
+              </div>
+              <div class="total-players">
+                <span>角色定价总人数: {{ getTotalRolePlayers() }} / {{ form.player_count || 0 }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 无数据状态 -->
+          <div v-else class="no-role-templates">
+            <div class="empty-icon">
+              <TagOutlined />
+            </div>
+            <p>暂无可用的角色定价方案</p>
+            <p class="empty-hint">当前门店尚未配置角色定价模板</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🆕 支付配置区域 -->
+      <a-divider orientation="left">
+        <span class="section-title">支付配置</span>
+      </a-divider>
+
+      <a-row :gutter="16">
+        <a-col :span="12">
+          <a-form-item label="支付类型" name="free_pay">
+            <a-radio-group v-model:value="form.free_pay" size="large">
+              <a-radio-button value="Free">免费</a-radio-button>
+              <a-radio-button value="Pay">付费</a-radio-button>
+            </a-radio-group>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="支付状态" name="payment_status">
+            <a-select v-model:value="form.payment_status" placeholder="选择支付状态">
+              <a-select-option value="FULL">已付全款</a-select-option>
+              <a-select-option value="DP">已付定金</a-select-option>
+              <a-select-option value="Not Yet">未付款</a-select-option>
+              <a-select-option value="Free">免费</a-select-option>
+            </a-select>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-row :gutter="16" v-if="form.free_pay === 'Pay'">
+        <a-col :span="12">
+          <a-form-item label="付款方式" name="payment_method">
+            <a-select v-model:value="form.payment_method" placeholder="选择付款方式">
+              <a-select-option value="Bank Transfer">Bank Transfer</a-select-option>
+              <a-select-option value="QR BCA">QR BCA</a-select-option>
+              <a-select-option value="DEBIT">DEBIT</a-select-option>
+              <a-select-option value="CC">CC</a-select-option>
+            </a-select>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="单价" name="unit_price">
+            <a-input-number 
+              v-model:value="form.unit_price" 
+              :min="0" 
+              placeholder="项目单价"
+              style="width: 100%"
+              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
+              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
+              @change="calculateTotalAmount"
+              class="price-input"
+            />
+            
+            <!-- 🆕 折扣明细（放在单价下面） -->
+            <div v-if="form.unit_price > 0 && form.player_count > 0" class="discount-detail-container">
+              <!-- 角色折扣明细 -->
+              <div v-if="priceDetail.roleDiscounts.length > 0" class="price-section">
+                <h6 class="price-section-title">角色折扣明细</h6>
+                <div 
+                  v-for="(role, index) in priceDetail.roleDiscounts" 
+                  :key="index"
+                  class="price-item"
+                >
+                  <div class="price-item-header">
+                    <span class="role-name">{{ role.role_name }}</span>
+                    <span class="role-discount">{{ role.discount_info }}</span>
+                  </div>
+                  <div class="price-item-detail">
+                    <span class="player-info">{{ role.player_count }}人 × Rp {{ formatPrice(role.unit_price) }}</span>
+                    <span class="original-amount">= Rp {{ formatPrice(role.original_amount) }}</span>
+                  </div>
+                  <div class="price-item-result">
+                    <span class="discount-amount">折扣: -Rp {{ formatPrice(role.discount_amount) }}</span>
+                    <span class="final-amount">应收: Rp {{ formatPrice(role.final_amount) }}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 无折扣明细 -->
+              <div v-if="priceDetail.noDiscountPlayers > 0" class="price-section">
+                <h6 class="price-section-title">无折扣明细</h6>
+                <div class="price-item">
+                  <div class="price-item-header">
+                    <span class="role-name">标准价格</span>
+                  </div>
+                  <div class="price-item-detail">
+                    <span class="player-info">{{ priceDetail.noDiscountPlayers }}人 × Rp {{ formatPrice(form.unit_price || 0) }}</span>
+                    <span class="final-amount">= Rp {{ formatPrice(priceDetail.noDiscountAmount) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-row :gutter="16" v-if="form.free_pay === 'Pay'">
+        <a-col :span="12">
+          <a-form-item label="总金额" name="total_amount">
+            <a-input-number 
+              v-model:value="form.total_amount" 
+              :min="0" 
+              placeholder="自动计算：考虑角色折扣"
+              style="width: 100%"
+              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
+              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
+              @change="calculateRemainingAmount"
+              readonly
+              class="readonly-field"
+            />
+            
+            <!-- 🆕 总计汇总（放在总金额下面） -->
+            <div v-if="form.unit_price > 0 && form.player_count > 0" class="total-summary-container">
+              <div class="price-summary">
+                <div class="summary-row">
+                  <span>原价总计:</span>
+                  <span>Rp {{ formatPrice((form.player_count || 0) * (form.unit_price || 0)) }}</span>
+                </div>
+                <div v-if="priceDetail.totalDiscount > 0" class="summary-row discount">
+                  <span>折扣总计:</span>
+                  <span>-Rp {{ formatPrice(priceDetail.totalDiscount) }}</span>
+                </div>
+                <div class="summary-row total">
+                  <span>应收总计:</span>
+                  <span>Rp {{ formatPrice(priceDetail.totalAmount) }}</span>
+                </div>
+              </div>
+            </div>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12" v-if="form.payment_status === 'DP'">
+          <a-form-item label="预付金额" name="prepaid_amount">
+            <a-input-number 
+              v-model:value="form.prepaid_amount" 
+              :min="0" 
+              :max="form.total_amount"
+              placeholder="预付金额（选填）"
+              style="width: 100%"
+              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
+              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
+              @change="calculateRemainingAmount"
+            />
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-row :gutter="16" v-if="form.free_pay === 'Pay' && form.payment_status === 'DP'">
+        <a-col :span="12">
+          <a-form-item label="剩余应付金额">
+            <a-input-number 
+              v-model:value="form.remaining_amount" 
+              :min="0"
+              placeholder="自动计算"
+              style="width: 100%"
+              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
+              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
+              readonly
+              class="readonly-field"
+            />
+            <small class="calculation-note">
+              自动计算：Rp {{ formatPrice(form.total_amount || 0) }} - Rp {{ formatPrice(form.prepaid_amount || 0) }}
+            </small>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <!-- 支付凭证上传 -->
+      <a-row :gutter="16" v-if="form.free_pay === 'Pay'">
+        <a-col :span="24">
+          <a-form-item label="支付凭证">
+            <a-upload
+              v-model:file-list="paymentImages"
+              list-type="picture-card"
+              :before-upload="beforeUpload"
+              @preview="handlePreview"
+              @remove="handleRemove"
+              :multiple="true"
+              accept="image/*"
+              :max-count="5"
+              :action="null"
+              :custom-request="() => {}"
+              :show-upload-list="true"
+            >
+              <div v-if="paymentImages.length < 5">
+                <plus-outlined />
+                <div style="margin-top: 8px">上传图片</div>
+              </div>
+            </a-upload>
+            <div class="help-text">
+              支持JPG、PNG格式，最多上传5张图片，每张不超过2MB
+            </div>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <!-- 🆕 其他配置区域 -->
+      <a-divider orientation="left">
+        <span class="section-title">其他配置</span>
+      </a-divider>
+
       <!-- 工作人员配置 -->
       <a-row :gutter="16">
         <a-col :span="8">
@@ -171,105 +597,7 @@
         </a-col>
       </a-row>
 
-      <a-row :gutter="16">
-        <a-col :span="12">
-          <a-form-item label="支付类型" name="free_pay">
-            <a-radio-group v-model:value="form.free_pay">
-              <a-radio value="Free">免费</a-radio>
-              <a-radio value="Pay">付费</a-radio>
-            </a-radio-group>
-          </a-form-item>
-        </a-col>
-        <a-col :span="12">
-          <a-form-item label="支付状态" name="payment_status">
-            <a-select v-model:value="form.payment_status" placeholder="选择支付状态">
-              <a-select-option value="FULL">已付全款</a-select-option>
-              <a-select-option value="DP">已付定金</a-select-option>
-              <a-select-option value="Not Yet">未付款</a-select-option>
-              <a-select-option value="Free">免费</a-select-option>
-            </a-select>
-          </a-form-item>
-        </a-col>
-      </a-row>
 
-      <a-row :gutter="16" v-if="form.free_pay === 'Pay'">
-        <a-col :span="12">
-          <a-form-item label="付款方式" name="payment_method">
-            <a-select v-model:value="form.payment_method" placeholder="选择付款方式">
-              <a-select-option value="Bank Transfer">Bank Transfer</a-select-option>
-              <a-select-option value="QR BCA">QR BCA</a-select-option>
-              <a-select-option value="DEBIT">DEBIT</a-select-option>
-              <a-select-option value="CC">CC</a-select-option>
-            </a-select>
-          </a-form-item>
-        </a-col>
-        <a-col :span="12">
-          <a-form-item label="单价" name="unit_price">
-            <a-input-number 
-              v-model:value="form.unit_price" 
-              :min="0" 
-              placeholder="项目单价"
-              style="width: 100%"
-              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
-              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
-              @change="calculateTotalAmount"
-            />
-          </a-form-item>
-        </a-col>
-      </a-row>
-
-      <a-row :gutter="16" v-if="form.free_pay === 'Pay'">
-        <a-col :span="12">
-          <a-form-item label="总金额" name="total_amount">
-            <a-input-number 
-              v-model:value="form.total_amount" 
-              :min="0" 
-              placeholder="自动计算：人数 × 单价"
-              style="width: 100%"
-              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
-              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
-              @change="calculateRemainingAmount"
-            />
-            <small class="calculation-note">
-              自动计算：{{ form.player_count || 0 }} 人 × Rp {{ formatPrice(form.unit_price || 0) }} = Rp {{ formatPrice((form.player_count || 0) * (form.unit_price || 0)) }}
-            </small>
-          </a-form-item>
-        </a-col>
-        <a-col :span="12" v-if="form.payment_status === 'DP'">
-          <a-form-item label="预付金额" name="prepaid_amount">
-            <a-input-number 
-              v-model:value="form.prepaid_amount" 
-              :min="0" 
-              :max="form.total_amount"
-              placeholder="预付金额（选填）"
-              style="width: 100%"
-              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
-              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
-              @change="calculateRemainingAmount"
-            />
-          </a-form-item>
-        </a-col>
-      </a-row>
-
-      <a-row :gutter="16" v-if="form.free_pay === 'Pay' && form.payment_status === 'DP'">
-        <a-col :span="12">
-          <a-form-item label="剩余应付金额">
-            <a-input-number 
-              v-model:value="form.remaining_amount" 
-              :min="0"
-              placeholder="自动计算"
-              style="width: 100%"
-              :formatter="value => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')"
-              :parser="value => value.replace(/Rp\s?|(,*)/g, '')"
-              readonly
-              class="calculated-field"
-            />
-            <small class="calculation-note">
-              自动计算：Rp {{ formatPrice(form.total_amount || 0) }} - Rp {{ formatPrice(form.prepaid_amount || 0) }}
-            </small>
-          </a-form-item>
-        </a-col>
-      </a-row>
 
       <a-row :gutter="16">
         <a-col :span="8">
@@ -294,134 +622,6 @@
         </a-col>
       </a-row>
 
-      <!-- 剧本杀专用字段 -->
-      <div v-if="form.order_type === '剧本杀'">
-        <a-divider>剧本杀信息</a-divider>
-        <a-row :gutter="16">
-          <a-col :span="24">
-            <a-form-item label="剧本" name="script_id">
-              <a-select 
-                v-model:value="form.script_id" 
-                placeholder="选择剧本"
-                :loading="loadingResources"
-                :disabled="!form.store_id"
-                show-search
-                option-filter-prop="children"
-              >
-                <a-select-option 
-                  v-for="script in scriptList" 
-                  :key="script.id" 
-                  :value="script.id"
-                >
-                  {{ script.name }} (Rp {{ script.store_price?.toLocaleString() || script.price?.toLocaleString() || '价格待定' }})
-                </a-select-option>
-              </a-select>
-              <div v-if="!form.store_id" style="font-size: 12px; color: #999; margin-top: 4px;">
-                请先选择门店
-              </div>
-              <div v-else-if="loadingResources" style="font-size: 12px; color: #999; margin-top: 4px;">
-                正在加载门店剧本...
-              </div>
-              <div v-else-if="scriptList.length === 0" style="font-size: 12px; color: #ff4d4f; margin-top: 4px;">
-                该门店暂无可用剧本
-              </div>
-            </a-form-item>
-          </a-col>
-        </a-row>
-      </div>
-
-      <!-- 密室专用字段 -->
-      <div v-if="form.order_type === '密室'">
-        <a-divider>密室信息</a-divider>
-        <a-row :gutter="16">
-          <a-col :span="24">
-            <a-form-item label="密室主题" name="escape_room_id">
-              <a-select 
-                v-model:value="form.escape_room_id" 
-                placeholder="选择密室主题"
-                :loading="loadingResources"
-                :disabled="!form.store_id"
-                show-search
-                option-filter-prop="children"
-              >
-                <a-select-option 
-                  v-for="room in escapeRoomList" 
-                  :key="room.id" 
-                  :value="room.id"
-                >
-                  {{ room.name }} (Rp {{ room.store_price?.toLocaleString() || room.price?.toLocaleString() || '价格待定' }})
-                </a-select-option>
-              </a-select>
-              <div v-if="!form.store_id" style="font-size: 12px; color: #999; margin-top: 4px;">
-                请先选择门店
-              </div>
-              <div v-else-if="loadingResources" style="font-size: 12px; color: #999; margin-top: 4px;">
-                正在加载门店密室...
-              </div>
-              <div v-else-if="escapeRoomList.length === 0" style="font-size: 12px; color: #ff4d4f; margin-top: 4px;">
-                该门店暂无可用密室
-              </div>
-            </a-form-item>
-          </a-col>
-        </a-row>
-        
-        <!-- NPC信息 -->
-        <a-row :gutter="16">
-          <a-col :span="8">
-            <a-form-item label="NPC数量">
-              <a-input-number 
-                :value="selectedEscapeRoom?.npc_count || 0"
-                :min="0" 
-                :max="10" 
-                placeholder="根据密室自动设置"
-                style="width: 100%"
-                disabled
-              />
-            </a-form-item>
-          </a-col>
-          <a-col :span="16">
-            <a-form-item label="NPC角色选择" name="selected_npc_roles">
-              <a-select 
-                v-model:value="form.selected_npc_roles" 
-                mode="multiple"
-                placeholder="从密室NPC角色中选择"
-                style="width: 100%"
-                :disabled="!selectedEscapeRoom || !selectedEscapeRoom.npc_roles || selectedEscapeRoom.npc_roles.length === 0"
-              >
-                <a-select-option
-                  v-for="role in selectedEscapeRoom?.npc_roles || []"
-                  :key="role"
-                  :value="role"
-                >
-                  {{ role }}
-                </a-select-option>
-              </a-select>
-              <div v-if="selectedEscapeRoom?.npc_roles && selectedEscapeRoom.npc_roles.length > 0" style="font-size: 12px; color: #666; margin-top: 4px;">
-                可选角色：{{ selectedEscapeRoom.npc_roles.join(', ') }}
-              </div>
-            </a-form-item>
-          </a-col>
-        </a-row>
-        
-        <a-row :gutter="16">
-          <a-col :span="8">
-            <a-form-item name="is_group_booking">
-              <a-checkbox v-model:checked="form.is_group_booking">拼团</a-checkbox>
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item name="include_photos">
-              <a-checkbox v-model:checked="form.include_photos">包含拍照</a-checkbox>
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item name="include_cctv">
-              <a-checkbox v-model:checked="form.include_cctv">包含监控</a-checkbox>
-            </a-form-item>
-          </a-col>
-        </a-row>
-      </div>
-
       <a-row :gutter="16">
         <a-col :span="12">
           <a-form-item label="房间" name="room_id">
@@ -442,9 +642,32 @@
                 {{ getRoomDisplayInfo(room) }}
               </a-select-option>
             </a-select>
-            <div v-if="checkingRoom" style="font-size: 12px; color: #999; margin-top: 4px;">
+            <div v-if="checkingRoom" class="help-text">
               正在检查房间可用性...
             </div>
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="优惠数量" name="promo_quantity">
+            <a-input-number 
+              v-model:value="form.promo_quantity" 
+              :min="0" 
+              placeholder="优惠数量（选填）"
+              style="width: 100%"
+            />
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-row :gutter="16">
+        <a-col :span="8">
+          <a-form-item name="internal_support">
+            <a-checkbox v-model:checked="form.internal_support">内部补位</a-checkbox>
+          </a-form-item>
+        </a-col>
+        <a-col :span="8">
+          <a-form-item name="is_group_booking">
+            <a-checkbox v-model:checked="form.is_group_booking">始发拼团</a-checkbox>
           </a-form-item>
         </a-col>
       </a-row>
@@ -457,35 +680,6 @@
               placeholder="输入备注信息"
               :rows="3"
             />
-          </a-form-item>
-        </a-col>
-      </a-row>
-
-      <!-- 支付凭证上传 -->
-      <a-row :gutter="16" v-if="form.free_pay === 'Pay'">
-        <a-col :span="24">
-          <a-form-item label="支付凭证">
-            <a-upload
-              v-model:file-list="paymentImages"
-              list-type="picture-card"
-              :before-upload="beforeUpload"
-              @preview="handlePreview"
-              @remove="handleRemove"
-              :multiple="true"
-              accept="image/*"
-              :max-count="5"
-              :action="null"
-              :custom-request="() => {}"
-              :show-upload-list="true"
-            >
-              <div v-if="paymentImages.length < 5">
-                <plus-outlined />
-                <div style="margin-top: 8px">上传图片</div>
-              </div>
-            </a-upload>
-            <div style="font-size: 12px; color: #999; margin-top: 4px;">
-              支持JPG、PNG格式，最多上传5张图片，每张不超过2MB
-            </div>
           </a-form-item>
         </a-col>
       </a-row>
@@ -502,7 +696,8 @@
 import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { orderAPI } from '@/api/order'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, TagOutlined } from '@ant-design/icons-vue'
+import { rolePricingTemplateAPI } from '@/api/multiPayment'
 import dayjs from 'dayjs'
 
 const props = defineProps({
@@ -532,6 +727,11 @@ const checkingRoom = ref(false)
 const paymentImages = ref([])
 const previewVisible = ref(false)
 const previewImage = ref('')
+
+// 🆕 角色定价相关数据
+const loadingRolePricing = ref(false)
+const availableRoleTemplates = ref([])
+const selectedRoleTemplates = ref([])
 
 // 🆕 数据列表
 const storeList = ref([])
@@ -565,6 +765,9 @@ const resetForm = () => {
     }
   })
   paymentImages.value = []
+  selectedRoleTemplates.value = []
+  availableRoleTemplates.value = []
+  loadingRolePricing.value = false
 }
 
 // 表单数据 - 增加房间字段和新的金额字段
@@ -599,7 +802,9 @@ const form = reactive({
   prepaid_amount: 0,
   remaining_amount: 0,
   // 🆕 新增密室NPC角色选择
-  selected_npc_roles: []
+  selected_npc_roles: [],
+  // 🆕 角色定价模板选择（保存历史数据）
+  selected_role_templates: []
 })
 
 // 🆕 更新的表单验证规则
@@ -659,6 +864,20 @@ const rules = {
   ],
   selected_npc_roles: [
     { type: 'array', message: '选择的NPC角色必须是数组格式' }
+  ],
+  selected_role_templates: [
+    {
+      validator: (rule, value) => {
+        // 验证角色定价人数不能超过游戏总人数
+        if (form.free_pay === 'Pay') {
+          const totalRolePlayers = getTotalRolePlayers()
+          if (totalRolePlayers > form.player_count) {
+            return Promise.reject(`角色定价总人数(${totalRolePlayers})不能超过游戏总人数(${form.player_count})`)
+          }
+        }
+        return Promise.resolve()
+      }
+    }
   ]
 }
 
@@ -704,6 +923,17 @@ watch(() => props.formData, async (newData) => {
       form.selected_npc_roles = newData.escape_room_npc_roles
     }
     
+    // 🆕 处理角色定价数据（编辑时加载原有选择）
+    if (newData.selected_role_templates && Array.isArray(newData.selected_role_templates)) {
+      form.selected_role_templates = newData.selected_role_templates
+      // 同步到响应式状态中
+      selectedRoleTemplates.value = newData.selected_role_templates.map(template => ({
+        template_id: template.template_id,
+        player_count: template.player_count || 1
+      }))
+      console.log('🎯 加载订单原有角色定价:', selectedRoleTemplates.value)
+    }
+    
     // 🆕 加载支付凭证图片
     if (newData.images && Array.isArray(newData.images)) {
       paymentImages.value = newData.images.map((img, index) => ({
@@ -720,6 +950,8 @@ watch(() => props.formData, async (newData) => {
     // 如果有门店ID，加载对应资源
     if (newData.store_id) {
       await loadStoreResources(newData.store_id)
+      // 🆕 编辑模式下加载角色定价模板
+      await loadAvailableRolePricingTemplates(newData.store_id)
     }
   } else {
     // 新建订单时重置表单
@@ -727,9 +959,30 @@ watch(() => props.formData, async (newData) => {
   }
 }, { immediate: true, deep: true })
 
+// 🆕 监听表单弹窗显示状态 - 确保每次打开都重新加载数据
+watch(() => props.visible, async (isVisible) => {
+  if (isVisible) {
+    console.log('📖 表单弹窗打开，准备加载数据')
+    
+    // 如果有门店ID，立即加载角色定价模板
+    if (form.store_id) {
+      console.log('🎯 检测到门店ID，开始加载角色定价模板:', form.store_id)
+      await loadAvailableRolePricingTemplates(form.store_id)
+    }
+  } else {
+    // 弹窗关闭时清理数据，确保下次打开时状态干净
+    console.log('📖 表单弹窗关闭，清理数据状态')
+    availableRoleTemplates.value = []
+    selectedRoleTemplates.value = []
+    loadingRolePricing.value = false
+  }
+})
+
 // 🆕 监听门店变化 - 修复编辑时不应重置已选项目
 watch(() => form.store_id, async (newStoreId, oldStoreId) => {
   if (newStoreId && newStoreId !== oldStoreId) {
+    console.log('🏪 门店变化:', { newStoreId, oldStoreId, isEdit: props.isEdit })
+    
     // 如果是编辑模式且第一次加载，保留现有选择
     const isFirstLoad = props.isEdit && !oldStoreId && props.formData?.store_id === newStoreId
     
@@ -749,6 +1002,10 @@ watch(() => form.store_id, async (newStoreId, oldStoreId) => {
     
     // 加载门店资源
     await loadStoreResources(newStoreId)
+    
+    // 🆕 加载角色定价模板（无论是新增还是编辑都要加载）
+    console.log('🎯 门店变化，开始加载角色定价模板:', newStoreId)
+    await loadAvailableRolePricingTemplates(newStoreId)
   }
 })
 
@@ -780,6 +1037,28 @@ watch(() => form.escape_room_id, (newEscapeRoomId) => {
 watch(() => form.player_count, () => {
   if (form.free_pay === 'Pay' && form.unit_price > 0) {
     calculateTotalAmount()
+  }
+})
+
+// 🆕 监听单价变化，自动重新计算总金额
+watch(() => form.unit_price, () => {
+  if (form.free_pay === 'Pay' && form.player_count > 0) {
+    calculateTotalAmount()
+  }
+})
+
+// 🆕 监听角色模板变化，自动重新计算总金额
+watch(() => selectedRoleTemplates.value, () => {
+  if (form.free_pay === 'Pay' && form.unit_price > 0 && form.player_count > 0) {
+    calculateTotalAmount()
+  }
+}, { deep: true })
+
+// 🆕 监听支付类型变化 - 确保从Free切换到Pay时能加载角色定价模板
+watch(() => form.free_pay, async (newPayType) => {
+  if (newPayType === 'Pay' && form.store_id && availableRoleTemplates.value.length === 0) {
+    console.log('💰 支付类型切换到付费，检查角色定价模板:', form.store_id)
+    await loadAvailableRolePricingTemplates(form.store_id)
   }
 })
 
@@ -820,6 +1099,13 @@ const loadAvailableStores = async () => {
     // 如果只有一个门店（门店级用户），自动选择
     if (storeList.value.length === 1) {
       form.store_id = storeList.value[0].id
+      
+      // 🆕 新增订单时自动选择门店后，立即加载角色定价模板和其他资源
+      if (!props.isEdit) {
+        console.log('🆕 新增订单自动选择门店，开始加载资源:', form.store_id)
+        await loadStoreResources(form.store_id)
+        await loadAvailableRolePricingTemplates(form.store_id)
+      }
     }
   } catch (error) {
     console.error('加载门店列表失败:', error)
@@ -932,13 +1218,81 @@ const getRoomDisplayInfo = (room) => {
   return `${room.name} [${room.room_type}, 容量${room.capacity}]${suffix}`
 }
 
-// 🆕 计算总金额
+// 🆕 计算总金额（考虑角色定价折扣）
 const calculateTotalAmount = () => {
   const playerCount = form.player_count || 0
   const unitPrice = form.unit_price || 0
-  form.total_amount = playerCount * unitPrice
+  
+  // 🆕 计算角色定价折扣后的总金额
+  const priceDetail = calculateDetailedPrice()
+  form.total_amount = priceDetail.totalAmount
   
   calculateRemainingAmount()
+}
+
+// 🆕 计算详细价格明细（包含角色折扣）
+const calculateDetailedPrice = () => {
+  const playerCount = form.player_count || 0
+  const unitPrice = form.unit_price || 0
+  
+  if (playerCount === 0 || unitPrice === 0) {
+    return {
+      roleDiscounts: [],
+      noDiscountPlayers: playerCount,
+      noDiscountAmount: 0,
+      totalAmount: 0,
+      totalDiscount: 0
+    }
+  }
+  
+  // 计算有折扣的角色
+  const roleDiscounts = selectedRoleTemplates.value.map(selected => {
+    const template = availableRoleTemplates.value.find(t => t.id === selected.template_id)
+    if (!template) return null
+    
+    const originalAmount = selected.player_count * unitPrice
+    let discountAmount = 0
+    let finalAmount = originalAmount
+    
+    // 计算折扣金额
+    if (template.discount_type === 'percentage') {
+      discountAmount = originalAmount * (template.discount_value / 100)
+      finalAmount = originalAmount - discountAmount
+    } else if (template.discount_type === 'fixed') {
+      discountAmount = Math.min(template.discount_value * selected.player_count, originalAmount)
+      finalAmount = originalAmount - discountAmount
+    }
+    
+    return {
+      role_name: template.role_name,
+      player_count: selected.player_count,
+      unit_price: unitPrice,
+      original_amount: originalAmount,
+      discount_amount: discountAmount,
+      final_amount: finalAmount,
+      discount_info: formatDiscount(template.discount_type, template.discount_value, template.discount_display)
+    }
+  }).filter(Boolean)
+  
+  // 计算已使用的人数
+  const usedPlayers = roleDiscounts.reduce((sum, role) => sum + role.player_count, 0)
+  
+  // 计算无折扣人数
+  const noDiscountPlayers = Math.max(0, playerCount - usedPlayers)
+  const noDiscountAmount = noDiscountPlayers * unitPrice
+  
+  // 计算总金额
+  const discountedAmount = roleDiscounts.reduce((sum, role) => sum + role.final_amount, 0)
+  const totalAmount = discountedAmount + noDiscountAmount
+  const totalDiscount = roleDiscounts.reduce((sum, role) => sum + role.discount_amount, 0)
+  
+  return {
+    roleDiscounts,
+    noDiscountPlayers,
+    noDiscountAmount,
+    totalAmount,
+    totalDiscount
+  }
 }
 
 // 🆕 计算剩余应付金额
@@ -952,6 +1306,207 @@ const calculateRemainingAmount = () => {
 const formatPrice = (price) => {
   if (!price) return '0'
   return new Intl.NumberFormat('id-ID').format(price)
+}
+
+// 🆕 加载当前门店可用的角色定价模板
+const loadAvailableRolePricingTemplates = async (storeId) => {
+  if (!storeId) {
+    console.log('❌ 加载角色定价模板失败：门店ID为空')
+    return
+  }
+  
+  try {
+    console.log('🔄 开始加载角色定价模板，门店ID:', storeId)
+    loadingRolePricing.value = true
+    
+    const response = await rolePricingTemplateAPI.getTemplatesForOrder(storeId)
+    
+    if (response && response.data) {
+      availableRoleTemplates.value = response.data
+      console.log(`✅ 加载角色定价模板成功: ${response.data.length} 个可用模板`, {
+        isEdit: props.isEdit,
+        storeId,
+        templates: response.data.map(t => ({ id: t.id, role_name: t.role_name }))
+      })
+      
+      if (response.meta) {
+        console.log('📊 角色定价模板元信息:', response.meta)
+      }
+      
+      // 如果有角色定价历史数据，在模板加载后重新验证选择
+      if (selectedRoleTemplates.value.length > 0) {
+        console.log('🔍 验证历史角色定价选择:', selectedRoleTemplates.value)
+        validateSelectedRoleTemplates()
+      }
+    } else {
+      availableRoleTemplates.value = []
+      console.log('⚠️ 角色定价模板响应为空')
+    }
+  } catch (error) {
+    console.error('❌ 加载角色定价模板失败:', {
+      storeId,
+      isEdit: props.isEdit,
+      error: error.message,
+      response: error.response?.data
+    })
+    availableRoleTemplates.value = []
+    
+    // 显示用户友好的错误信息
+    if (error.response?.status === 403) {
+      console.warn('权限不足，无法加载角色定价模板')
+    } else if (error.response?.status === 404) {
+      console.warn('门店不存在或无角色定价模板')
+    } else {
+      console.error('网络错误或服务器错误:', error.message)
+    }
+  } finally {
+    loadingRolePricing.value = false
+    console.log('🏁 角色定价模板加载完成')
+  }
+}
+
+// 🆕 验证已选择的角色定价模板是否仍然可用
+const validateSelectedRoleTemplates = () => {
+  const originalCount = selectedRoleTemplates.value.length
+  
+  const validSelections = selectedRoleTemplates.value.filter(selected => {
+    const isValid = availableRoleTemplates.value.some(template => template.id === selected.template_id)
+    if (!isValid) {
+      console.log('❌ 发现无效的角色定价选择:', selected)
+    }
+    return isValid
+  })
+  
+  if (validSelections.length !== originalCount) {
+    const removedCount = originalCount - validSelections.length
+    console.log(`🧹 清理了 ${removedCount} 个无效的角色定价选择`, {
+      原始数量: originalCount,
+      有效数量: validSelections.length,
+      有效选择: validSelections
+    })
+    selectedRoleTemplates.value = validSelections
+  } else {
+    console.log('✅ 所有历史角色定价选择都有效')
+  }
+}
+
+// 🆕 格式化折扣显示
+const formatDiscount = (type, value, displayText = null) => {
+  if (displayText) {
+    return displayText
+  }
+  
+  if (type === 'percentage') {
+    return `-${value}%`
+  } else if (type === 'fixed') {
+    return `-Rp ${formatPrice(value)}`
+  }
+  return '无折扣'
+}
+
+// 🆕 判断角色定价模板是否被选中
+const isRoleTemplateSelected = (templateId) => {
+  return selectedRoleTemplates.value.some(s => s.template_id === templateId)
+}
+
+// 🆕 获取选中的角色模板人数
+const getSelectedRolePlayerCount = (templateId) => {
+  const selected = selectedRoleTemplates.value.find(s => s.template_id === templateId)
+  return selected ? selected.player_count : 1
+}
+
+// 🆕 更新选中的角色模板人数
+const updateRolePlayerCount = (templateId, value) => {
+  if (!value || value < 1) value = 1
+  
+  const selectedIndex = selectedRoleTemplates.value.findIndex(s => s.template_id === templateId)
+  if (selectedIndex !== -1) {
+    // 计算其他角色的总人数
+    const otherRolesTotal = selectedRoleTemplates.value
+      .filter(s => s.template_id !== templateId)
+      .reduce((sum, s) => sum + s.player_count, 0)
+    
+    // 验证总人数不超过游戏人数
+    if (otherRolesTotal + value > (form.player_count || 0)) {
+      message.error(`角色定价总人数不能超过游戏总人数 ${form.player_count}`)
+      return
+    }
+    
+    selectedRoleTemplates.value[selectedIndex].player_count = value
+  }
+}
+
+// 🆕 切换角色定价模板选择
+const toggleRoleTemplate = (template) => {
+  const selectedIndex = selectedRoleTemplates.value.findIndex(s => s.template_id === template.id)
+  if (selectedIndex !== -1) {
+    // 取消选择
+    selectedRoleTemplates.value.splice(selectedIndex, 1)
+  } else {
+    // 添加选择前，检查人数限制
+    const currentTotal = selectedRoleTemplates.value.reduce((sum, s) => sum + s.player_count, 0)
+    if (currentTotal + 1 > (form.player_count || 0)) {
+      message.error(`添加角色定价会超出游戏总人数 ${form.player_count}，请先调整现有角色人数`)
+      return
+    }
+    
+    // 添加选择，默认人数为1
+    selectedRoleTemplates.value.push({
+      template_id: template.id,
+      player_count: 1
+    })
+  }
+}
+
+// 🆕 获取角色模板名称
+const getRoleTemplateName = (templateId) => {
+  const template = availableRoleTemplates.value.find(t => t.id === templateId)
+  return template ? template.role_name : '未知角色'
+}
+
+// 🆕 获取角色模板折扣显示
+const getRoleTemplateDiscount = (templateId) => {
+  const template = availableRoleTemplates.value.find(t => t.id === templateId)
+  if (!template) return ''
+  return formatDiscount(template.discount_type, template.discount_value, template.discount_display)
+}
+
+// 🆕 获取总选中的角色人数
+const getTotalRolePlayers = () => {
+  return selectedRoleTemplates.value.reduce((sum, selected) => sum + selected.player_count, 0)
+}
+
+// 🆕 获取详细价格信息（计算属性）
+const priceDetail = computed(() => {
+  return calculateDetailedPrice()
+})
+
+// 🆕 处理剧本选择变化，自动更新单价
+const handleScriptChange = (scriptId) => {
+  if (!scriptId) return
+  
+  const script = scriptList.value.find(s => s.id === scriptId)
+  if (script && script.store_price !== undefined) {
+    // 新增订单或者单价为空时自动更新单价
+    if (!props.isEdit || !form.unit_price) {
+      form.unit_price = script.store_price || script.price || 0
+      calculateTotalAmount()
+    }
+  }
+}
+
+// 🆕 处理密室选择变化，自动更新单价
+const handleEscapeRoomChange = (escapeRoomId) => {
+  if (!escapeRoomId) return
+  
+  const escapeRoom = escapeRoomList.value.find(r => r.id === escapeRoomId)
+  if (escapeRoom && escapeRoom.store_price !== undefined) {
+    // 新增订单或者单价为空时自动更新单价
+    if (!props.isEdit || !form.unit_price) {
+      form.unit_price = escapeRoom.store_price || escapeRoom.price || 0
+      calculateTotalAmount()
+    }
+  }
 }
 
 // 🆕 图片上传相关函数
@@ -1045,6 +1600,15 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
     
+    // 🆕 额外验证：角色定价总人数不能超过游戏人数
+    if (selectedRoleTemplates.value.length > 0) {
+      const totalRolePlayers = selectedRoleTemplates.value.reduce((sum, s) => sum + s.player_count, 0)
+      if (totalRolePlayers > (form.player_count || 0)) {
+        message.error(`角色定价总人数(${totalRolePlayers})不能超过游戏总人数(${form.player_count})，请调整角色人数`)
+        return
+      }
+    }
+    
     // 再次检查房间可用性
     if (form.room_id && form.order_date && form.start_time && form.end_time) {
       const date = form.order_date.format('YYYY-MM-DD')
@@ -1108,6 +1672,18 @@ const handleSubmit = async () => {
       submitData.escape_room_npc_roles = submitData.selected_npc_roles
     }
 
+    // 🆕 处理角色定价数据
+    if (selectedRoleTemplates.value.length > 0) {
+      submitData.selected_role_templates = selectedRoleTemplates.value.map(selected => ({
+        template_id: selected.template_id,
+        player_count: selected.player_count,
+        role_name: getRoleTemplateName(selected.template_id),
+        discount_info: getRoleTemplateDiscount(selected.template_id)
+      }))
+    } else {
+      submitData.selected_role_templates = []
+    }
+
     // 清理不需要的字段
     if (submitData.order_type === '剧本杀') {
       delete submitData.escape_room_id
@@ -1146,6 +1722,8 @@ const handleCancel = () => {
   roomOccupancy.value = {}
   userList.value = []
   paymentImages.value = []
+  selectedRoleTemplates.value = []
+  availableRoleTemplates.value = []
   previewVisible.value = false
   previewImage.value = ''
   emit('update:visible', false)
@@ -1153,30 +1731,440 @@ const handleCancel = () => {
 </script>
 
 <style scoped>
+/* 🆕 现代化布局样式 */
+.ant-form {
+  max-height: 80vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
 .ant-form-item {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .ant-divider {
-  margin: 16px 0;
+  margin: 24px 0 20px 0;
+  border-color: #e8f4f8;
 }
 
+.section-title {
+  color: #1890ff;
+  font-weight: 600;
+  font-size: 16px;
+}
 
+/* 🆕 项目选择区域样式 */
+.project-section {
+  background: #fafbfc;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #e8f0fe;
+  margin-bottom: 16px;
+}
+
+.help-text {
+  font-size: 12px;
+  color: #999;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.help-text.error {
+  color: #ff4d4f;
+}
+
+/* 🆕 角色定价包装器样式 */
+.role-pricing-wrapper {
+  background: #f8fffe;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #d6f7ff;
+  margin-bottom: 20px;
+}
+
+/* 🆕 支付配置样式优化 */
+.price-input :deep(.ant-input-number) {
+  border: 2px solid #e8f4f8;
+  border-radius: 6px;
+}
+
+.price-input :deep(.ant-input-number:focus) {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+}
+
+.readonly-field :deep(.ant-input-number) {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border: 1px solid #d6d9dc;
+  color: #495057;
+}
+
+.readonly-field :deep(.ant-input-number-input) {
+  background: transparent;
+  cursor: not-allowed;
+  color: #495057;
+  font-weight: 500;
+}
 
 .calculation-note {
   color: #666;
   font-size: 12px;
-  margin-top: 4px;
+  margin-top: 6px;
   font-style: italic;
+  background: #f8f9fa;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border-left: 3px solid #1890ff;
 }
 
-.calculated-field {
-  background-color: #f5f5f5 !important;
-  cursor: not-allowed !important;
+/* 🆕 角色定价选择区域样式 */
+.role-pricing-section {
+  padding: 0;
+  background: transparent;
+  border: none;
 }
 
-.calculated-field :deep(.ant-input-number-input) {
-  background-color: #f5f5f5 !important;
-  cursor: not-allowed !important;
+.loading-container {
+  text-align: center;
+  padding: 40px 20px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e6f7ff;
+}
+
+.role-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.role-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.role-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+  border: 2px solid #e6f7ff;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.08);
+}
+
+.role-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(24, 144, 255, 0.15);
+  border-color: #40a9ff;
+}
+
+.role-card.selected {
+  border-color: #1890ff;
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.role-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.role-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.role-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.role-discount {
+  background: #ffece6;
+  color: #faad14;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.role-description {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.player-count-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.player-count-input label {
+  font-size: 12px;
+  color: #333;
+  font-weight: 500;
+}
+
+.player-count-input .ant-input-number {
+  width: 80px;
+}
+
+.role-validity {
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.selected-roles-summary {
+  margin-top: 20px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%);
+  border-radius: 12px;
+  border: 2px solid #91d5ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #91d5ff;
+}
+
+.summary-header h5 {
+  margin: 0;
+  font-size: 16px;
+  color: #1890ff;
+  font-weight: 600;
+}
+
+.summary-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.summary-item {
+  background: #ffffff;
+  border: 1px solid #40a9ff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #1890ff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 1px 4px rgba(24, 144, 255, 0.1);
+  font-weight: 500;
+}
+
+.total-players {
+  font-size: 14px;
+  color: #1890ff;
+  text-align: right;
+  font-weight: 600;
+  background: #ffffff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #91d5ff;
+}
+
+.no-role-templates {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px dashed #d9d9d9;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+  color: #1890ff;
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: #bbb;
+  margin-top: 8px;
+}
+
+/* 🆕 折扣明细样式（在单价下面） */
+.discount-detail-container {
+  margin-top: 12px;
+  padding: 16px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+}
+
+/* 🆕 总计汇总样式（在总金额下面） */
+.total-summary-container {
+  margin-top: 12px;
+  padding: 16px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 6px;
+}
+
+.price-section {
+  margin-bottom: 16px;
+}
+
+.price-section:last-of-type {
+  margin-bottom: 12px;
+}
+
+.price-section-title {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #dee2e6;
+  padding-bottom: 4px;
+}
+
+.price-item {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.price-item:last-child {
+  margin-bottom: 0;
+}
+
+.price-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.role-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+}
+
+.role-discount {
+  background: #fff2e8;
+  color: #fa8c16;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.price-item-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #666;
+}
+
+.price-item-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.player-info {
+  color: #666;
+}
+
+.original-amount {
+  color: #666;
+}
+
+.discount-amount {
+  color: #f50;
+  font-weight: 500;
+}
+
+.final-amount {
+  color: #52c41a;
+  font-weight: 600;
+}
+
+.price-summary {
+  border-top: 2px solid #dee2e6;
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.summary-row:last-child {
+  margin-bottom: 0;
+}
+
+.summary-row.discount {
+  color: #f50;
+  font-weight: 500;
+}
+
+.summary-row.total {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  border-top: 1px solid #dee2e6;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.summary-row.total span:last-child {
+  color: #52c41a;
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  .discount-detail-container,
+  .total-summary-container {
+    padding: 12px;
+  }
+  
+  .price-item-header,
+  .price-item-detail,
+  .price-item-result {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .summary-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
 }
 </style> 

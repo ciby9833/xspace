@@ -102,6 +102,33 @@ const routes = [
           title: '权限管理',
           permission: 'system.permission'
         }
+      },
+      {
+        path: '/role-pricing',
+        name: 'RolePricing',
+        component: () => import('@/views/RolePricingView.vue'),
+        meta: { 
+          title: '角色定价模板',
+          permission: 'role.pricing.view'
+        }
+      },
+      {
+        path: '/pricing-calendar',
+        name: 'PricingCalendar',
+        component: () => import('@/views/PricingCalendarView.vue'),
+        meta: { 
+          title: '定价日历',
+          permission: 'pricing.calendar.view'
+        }
+      },
+      {
+        path: '/payment-query',
+        name: 'PaymentQuery',
+        component: () => import('@/views/PaymentQueryView.vue'),
+        meta: { 
+          title: '支付查询',
+          permission: 'order.view'
+        }
       }
     ]
   }

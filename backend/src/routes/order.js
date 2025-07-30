@@ -115,12 +115,23 @@ router.post('/booking/pre-check',
 );
 
 // 🆕 检查自定义时间段可用性
-router.get('/booking/store/:storeId/rooms/:roomId/custom-check',
+router.get('/stores/:storeId/rooms/:roomId/time-slots/check', orderController.checkCustomTimeSlot);
+
+// 🆕 获取可用的角色定价模板（用于订单折扣选择）
+router.get('/stores/:storeId/role-pricing-templates', orderController.getAvailableRolePricingTemplates);
+
+// 🆕 获取可用的定价日历规则（用于订单折扣选择）
+router.get('/stores/:storeId/pricing-calendar', orderController.getAvailablePricingCalendar);
+
+// 🆕 计算订单折扣预览
+router.post('/calculate-discount', orderController.calculateOrderDiscount);
+
+// 🆕 获取订单支付信息汇总（包含玩家和支付记录）
+router.get('/:orderId/payment-summary', 
   authenticateToken,
   checkPermission('order.view'),
-  param('storeId').isUUID().withMessage('门店ID格式不正确'),
-  param('roomId').isUUID().withMessage('房间ID格式不正确'),
-  orderController.checkCustomTimeSlot.bind(orderController)
+  param('orderId').isUUID().withMessage('订单ID格式不正确'),
+  orderController.getOrderPaymentSummary
 );
 
 // 🆕 订单状态管理路由
@@ -163,6 +174,10 @@ router.get('/export',
   checkPermission('order.view'), 
   orderController.exportOrders
 );
+
+// 🆕 多笔付款相关路由
+router.post('/multi-payment', authenticateToken, orderController.createOrderWithMultiPayment);
+router.post('/payment-items-suggestion', authenticateToken, orderController.generatePaymentItemsSuggestion);
 
 // 订单管理路由（放在最后，避免与特定路由冲突）
 router.get('/', authenticateToken, checkPermission('order.view'), orderController.getList);

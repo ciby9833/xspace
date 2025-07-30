@@ -4,6 +4,9 @@ const { deleteFile } = require('../utils/upload');
 const PermissionChecker = require('../utils/permissions');
 const pool = require('../database/connection');
 const { ACCOUNT_LEVELS } = require('../config/permissions');
+const orderPlayerModel = require('../models/orderPlayerModel');
+const orderPaymentModel = require('../models/orderPaymentModel');
+const rolePricingTemplateModel = require('../models/rolePricingTemplateModel');
 
 class OrderService extends BaseService {
   constructor() {
@@ -64,6 +67,36 @@ class OrderService extends BaseService {
       formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
       // 🆕 处理密室支持语言字段格式
       formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
+      
+      // 🆕 解析角色定价模板JSON字段
+      console.log('🔍 Debug selected_role_templates (getList):', {
+        orderId: order.id,
+        customerName: order.customer_name,
+        rawValue: order.selected_role_templates,
+        type: typeof order.selected_role_templates,
+        isNull: order.selected_role_templates === null,
+        isUndefined: order.selected_role_templates === undefined,
+        truthyValue: !!order.selected_role_templates
+      });
+      
+      if (order.selected_role_templates !== null && order.selected_role_templates !== undefined) {
+        try {
+          if (typeof order.selected_role_templates === 'string') {
+            formatted.selected_role_templates = JSON.parse(order.selected_role_templates);
+          } else {
+            formatted.selected_role_templates = order.selected_role_templates;
+          }
+          if (!Array.isArray(formatted.selected_role_templates)) {
+            formatted.selected_role_templates = [];
+          }
+        } catch (error) {
+          console.warn('解析selected_role_templates失败:', error);
+          formatted.selected_role_templates = [];
+        }
+      } else {
+        formatted.selected_role_templates = [];
+      }
+      
       // 确保 images 是数组
       if (formatted.images && !Array.isArray(formatted.images)) {
         formatted.images = [];
@@ -100,7 +133,10 @@ class OrderService extends BaseService {
       start_date: query.start_date,
       end_date: query.end_date,
       customer_name: query.customer_name ? query.customer_name.trim() : undefined,
-      customer_phone: query.customer_phone ? query.customer_phone.trim() : undefined
+      customer_phone: query.customer_phone ? query.customer_phone.trim() : undefined,
+      // 🆕 新增筛选条件
+      enable_multi_payment: query.enable_multi_payment,
+      has_role_discount: query.has_role_discount
     };
 
     // 移除undefined值
@@ -119,45 +155,89 @@ class OrderService extends BaseService {
       formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
       // 🆕 处理密室支持语言字段格式
       formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
+      
+      // 🆕 解析角色定价模板JSON字段
+      console.log('🔍 Debug selected_role_templates (getStoreOrders):', {
+        orderId: order.id,
+        customerName: order.customer_name,
+        rawValue: order.selected_role_templates,
+        type: typeof order.selected_role_templates,
+        isNull: order.selected_role_templates === null,
+        isUndefined: order.selected_role_templates === undefined,
+        truthyValue: !!order.selected_role_templates
+      });
+      
+      if (order.selected_role_templates !== null && order.selected_role_templates !== undefined) {
+        try {
+          if (typeof order.selected_role_templates === 'string') {
+            formatted.selected_role_templates = JSON.parse(order.selected_role_templates);
+          } else {
+            formatted.selected_role_templates = order.selected_role_templates;
+          }
+          if (!Array.isArray(formatted.selected_role_templates)) {
+            formatted.selected_role_templates = [];
+          }
+        } catch (error) {
+          console.warn('解析selected_role_templates失败:', error);
+          formatted.selected_role_templates = [];
+        }
+      } else {
+        formatted.selected_role_templates = [];
+      }
+      
       return formatted;
     });
   }
 
-  // 🆕 获取订单显示语言（基于剧本/密室的支持语言）
+  // 🆕 获取订单显示语言
   getOrderDisplayLanguages(order) {
-    let supportedLanguages = [];
+    let languages = [];
     
+    // 根据订单类型获取对应的语言支持
     if (order.order_type === '剧本杀' && order.script_supported_languages) {
-      try {
-        if (typeof order.script_supported_languages === 'string') {
-          supportedLanguages = JSON.parse(order.script_supported_languages);
-        } else if (Array.isArray(order.script_supported_languages)) {
-          supportedLanguages = order.script_supported_languages;
-        }
-      } catch (e) {
-        console.warn('解析剧本语言失败:', e);
-        supportedLanguages = ['IND']; // 默认印尼语
-      }
+      languages = this.parseLanguageField(order.script_supported_languages);
     } else if (order.order_type === '密室' && order.escape_room_supported_languages) {
-      try {
-        if (typeof order.escape_room_supported_languages === 'string') {
-          supportedLanguages = JSON.parse(order.escape_room_supported_languages);
-        } else if (Array.isArray(order.escape_room_supported_languages)) {
-          supportedLanguages = order.escape_room_supported_languages;
-        }
-      } catch (e) {
-        console.warn('解析密室语言失败:', e);
-        supportedLanguages = ['IND']; // 默认印尼语
-      }
+      languages = this.parseLanguageField(order.escape_room_supported_languages);
+    } else if (order.language) {
+      // 如果没有剧本/密室语言信息，使用订单的语言字段
+      languages = [order.language];
     }
     
-    // 如果没有获取到语言信息，使用默认值
-    if (!supportedLanguages || supportedLanguages.length === 0) {
-      supportedLanguages = ['IND'];
+    // 如果都没有，默认为印尼语
+    if (languages.length === 0) {
+      languages = ['IND'];
     }
     
     // 转换为中文显示
-    return supportedLanguages.map(lang => this.getLanguageText(lang));
+    const languageMap = {
+      'CN': '中文',
+      'EN': '英语', 
+      'IND': '印尼语'
+    };
+    
+    return languages.map(lang => languageMap[lang] || lang);
+  }
+
+  // 🆕 解析语言字段的辅助方法
+  parseLanguageField(languageField) {
+    try {
+      if (typeof languageField === 'string') {
+        // 如果是字符串，尝试解析为 JSON
+        if (languageField.startsWith('[') || languageField.startsWith('{')) {
+          return JSON.parse(languageField);
+        } else {
+          // 如果是逗号分隔的字符串
+          return languageField.split(',').map(lang => lang.trim());
+        }
+      } else if (Array.isArray(languageField)) {
+        return languageField;
+      }
+    } catch (e) {
+      console.warn('解析语言字段失败:', e);
+    }
+    
+    // 默认返回印尼语
+    return ['IND'];
   }
 
   // 🆕 解析密室NPC角色字段
@@ -233,9 +313,92 @@ class OrderService extends BaseService {
     // 🆕 处理密室支持语言字段格式
     formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
     
+    // 🆕 解析角色定价模板JSON字段
+    console.log('🔍 Debug selected_role_templates (getById):', {
+      orderId: order.id,
+      customerName: order.customer_name,
+      rawValue: order.selected_role_templates,
+      type: typeof order.selected_role_templates,
+      isNull: order.selected_role_templates === null,
+      isUndefined: order.selected_role_templates === undefined,
+      truthyValue: !!order.selected_role_templates
+    });
+    
+    if (order.selected_role_templates !== null && order.selected_role_templates !== undefined) {
+      try {
+        if (typeof order.selected_role_templates === 'string') {
+          formatted.selected_role_templates = JSON.parse(order.selected_role_templates);
+        } else {
+          formatted.selected_role_templates = order.selected_role_templates;
+        }
+        // 确保是数组格式
+        if (!Array.isArray(formatted.selected_role_templates)) {
+          formatted.selected_role_templates = [];
+        }
+      } catch (error) {
+        console.warn('解析selected_role_templates失败:', error);
+        formatted.selected_role_templates = [];
+      }
+    } else {
+      formatted.selected_role_templates = [];
+    }
+    
     // 确保 images 是数组
     if (formatted.images && !Array.isArray(formatted.images)) {
       formatted.images = [];
+    }
+    
+    // 🆕 动态计算折扣统计信息，覆盖数据库中可能不准确的值
+    if (!formatted.enable_multi_payment) {
+      // 只对传统订单动态计算，多笔支付订单使用数据库中的准确值
+      const finalAmount = parseFloat(formatted.total_amount || 0);
+      const totalDiscountAmount = parseFloat(formatted.discount_amount || 0) + 
+                                 parseFloat(formatted.manual_discount || 0) + 
+                                 parseFloat(formatted.activity_discount || 0) + 
+                                 parseFloat(formatted.member_discount || 0) + 
+                                 parseFloat(formatted.package_discount || 0) + 
+                                 parseFloat(formatted.promo_discount || 0);
+      const originalPrice = finalAmount + totalDiscountAmount;
+      const playerCount = formatted.player_count || 1;
+      
+      // 计算享受折扣的玩家数量
+      let playersWithDiscount = 0;
+      if (formatted.selected_role_templates && formatted.selected_role_templates.length > 0) {
+        // 获取模板详细信息，填充缺失的折扣信息
+        for (let i = 0; i < formatted.selected_role_templates.length; i++) {
+          const template = formatted.selected_role_templates[i];
+          playersWithDiscount += parseInt(template.player_count) || 0;
+          
+          // 如果模板缺少折扣详细信息，尝试从数据库获取
+          if (template.template_id && (!template.discount_type || !template.discount_value)) {
+            try {
+              const templateDetail = await rolePricingTemplateModel.findById(template.template_id);
+              if (templateDetail) {
+                formatted.selected_role_templates[i] = {
+                  ...template,
+                  role_name: template.role_name || templateDetail.role_name,
+                  discount_type: template.discount_type || templateDetail.discount_type,
+                  discount_value: template.discount_value || templateDetail.discount_value
+                };
+              }
+            } catch (error) {
+              console.warn('获取角色模板详情失败:', error);
+            }
+          }
+        }
+      } else if (totalDiscountAmount > 0) {
+        // 如果没有角色模板但有折扣，假设所有玩家都享受折扣
+        playersWithDiscount = playerCount;
+      }
+      
+      // 覆盖数据库中的统计值
+      formatted.total_players_with_discount = playersWithDiscount;
+      formatted.total_players_without_discount = playerCount - playersWithDiscount;
+      formatted.total_original_amount = originalPrice;
+      formatted.total_discount_amount = totalDiscountAmount;
+      formatted.total_final_amount = finalAmount;
+      formatted.total_discount_percentage = originalPrice > 0 ? 
+        parseFloat(((totalDiscountAmount / originalPrice) * 100).toFixed(2)) : 0;
     }
     
     return formatted;
@@ -332,12 +495,12 @@ class OrderService extends BaseService {
       pic_payment: data.pic_payment || null,
       promo_quantity: data.promo_quantity || null,
       // 🆕 处理其他可能的字段映射
-      unit_price: data.total_amount, // 单价等于总金额
+      unit_price: data.unit_price || data.total_amount || 0, // 🔧 修正：使用前端提交的unit_price
       is_free: data.free_pay === 'Free' ? true : false, // 转换Free/Pay为布尔值
       // 🆕 密室NPC角色处理
       escape_room_npc_roles: data.escape_room_npc_roles ? JSON.stringify(data.escape_room_npc_roles) : null,
       // 🆕 新增财务字段处理
-      original_price: data.original_price || data.total_amount || 0,
+      original_price: data.original_price || data.unit_price || data.total_amount || 0,
       discount_price: data.discount_price || 0,
       discount_amount: data.discount_amount || 0,
       prepaid_amount: data.prepaid_amount || 0,
@@ -352,13 +515,15 @@ class OrderService extends BaseService {
       refund_reason: data.refund_reason || null,
       refund_date: data.refund_date || null,
       actual_start_time: data.actual_start_time || null,
-      actual_end_time: data.actual_end_time || null
+      actual_end_time: data.actual_end_time || null,
+      // 🆕 多笔支付字段
+      enable_multi_payment: data.enable_multi_payment || false,
+      // 🆕 处理详细价格计算结果
+      ...this.processOrderPriceDetail(data)
     };
 
-    // 🆕 使用清理函数只保留有效字段
-    const cleanedOrderData = this.cleanOrderData(orderData);
-
-    return await this.model.create(cleanedOrderData);
+    // 直接使用Model层创建订单，不需要字段过滤
+    return await this.model.create(orderData);
   }
 
   // 更新订单
@@ -443,6 +608,12 @@ class OrderService extends BaseService {
       escape_room_npc_roles: data.escape_room_npc_roles !== undefined ? 
         (data.escape_room_npc_roles ? JSON.stringify(data.escape_room_npc_roles) : null) : 
         existingOrder.escape_room_npc_roles,
+      // 🆕 角色定价模板处理
+      selected_role_templates: data.selected_role_templates !== undefined ? 
+        data.selected_role_templates : existingOrder.selected_role_templates,
+      // 🆕 多笔支付字段处理
+      enable_multi_payment: data.enable_multi_payment !== undefined ? 
+        data.enable_multi_payment : existingOrder.enable_multi_payment,
       // 🆕 新增财务字段处理
       original_price: data.original_price !== undefined ? data.original_price : existingOrder.original_price,
       discount_price: data.discount_price !== undefined ? data.discount_price : existingOrder.discount_price,
@@ -462,10 +633,8 @@ class OrderService extends BaseService {
       actual_end_time: data.actual_end_time !== undefined ? data.actual_end_time : existingOrder.actual_end_time
     };
 
-    // 🆕 使用清理函数只保留有效字段
-    const cleanedUpdateData = this.cleanOrderData(updateData);
-
-    const updatedOrder = await this.model.update(orderId, cleanedUpdateData);
+    // 直接使用Model层更新订单，不需要字段过滤
+    const updatedOrder = await this.model.update(orderId, updateData);
 
     return this.formatTimeFields(updatedOrder, user.user_timezone);
   }
@@ -1443,12 +1612,130 @@ class OrderService extends BaseService {
       if (item_type === 'script') {
         const scriptModel = require('../models/scriptModel');
         const storeScripts = await scriptModel.findByStoreId(store_id);
-        itemInfo = storeScripts.find(s => s.id === item_id);
+        const rawScript = storeScripts.find(s => s.id === item_id);
+        
+        if (rawScript) {
+          // 处理剧本的JSON字段，使用与orderModel.getStoreResources相同的逻辑
+          // 处理 supported_languages 字段
+          let supportedLanguages = [];
+          if (rawScript.supported_languages) {
+            if (typeof rawScript.supported_languages === 'string') {
+              try {
+                supportedLanguages = JSON.parse(rawScript.supported_languages);
+              } catch (e) {
+                console.warn('解析剧本语言失败:', e);
+                supportedLanguages = ['IND'];
+              }
+            } else if (Array.isArray(rawScript.supported_languages)) {
+              supportedLanguages = rawScript.supported_languages;
+            }
+          }
+          if (!supportedLanguages || supportedLanguages.length === 0) {
+            supportedLanguages = ['IND'];
+          }
+
+          // 处理 images 字段
+          let images = [];
+          if (rawScript.images) {
+            if (typeof rawScript.images === 'string') {
+              try {
+                images = JSON.parse(rawScript.images);
+              } catch (e) {
+                console.warn('解析剧本图片失败:', e);
+                images = [];
+              }
+            } else if (Array.isArray(rawScript.images)) {
+              images = rawScript.images;
+            }
+          }
+
+          // 处理 tags 字段
+          let tags = [];
+          if (rawScript.tags) {
+            if (typeof rawScript.tags === 'string') {
+              try {
+                tags = JSON.parse(rawScript.tags);
+              } catch (e) {
+                console.warn('解析剧本标签失败:', e);
+                tags = [];
+              }
+            } else if (Array.isArray(rawScript.tags)) {
+              tags = rawScript.tags;
+            }
+          }
+
+          itemInfo = {
+            ...rawScript,
+            supported_languages: supportedLanguages,
+            images: images,
+            tags: tags
+          };
+        }
+        
         finalPrice = itemInfo?.store_price || itemInfo?.price || 0;
       } else if (item_type === 'escape_room') {
         const escapeRoomModel = require('../models/escapeRoomModel');
         const storeEscapeRooms = await escapeRoomModel.findByStoreId(store_id);
-        itemInfo = storeEscapeRooms.find(er => er.id === item_id);
+        const rawEscapeRoom = storeEscapeRooms.find(er => er.id === item_id);
+        
+        if (rawEscapeRoom) {
+          // 处理密室的JSON字段，使用与orderModel.getStoreResources相同的逻辑
+          // 处理 supported_languages 字段
+          let supportedLanguages = [];
+          if (rawEscapeRoom.supported_languages) {
+            if (typeof rawEscapeRoom.supported_languages === 'string') {
+              try {
+                supportedLanguages = JSON.parse(rawEscapeRoom.supported_languages);
+              } catch (e) {
+                console.warn('解析密室语言失败:', e);
+                supportedLanguages = ['IND'];
+              }
+            } else if (Array.isArray(rawEscapeRoom.supported_languages)) {
+              supportedLanguages = rawEscapeRoom.supported_languages;
+            }
+          }
+          if (!supportedLanguages || supportedLanguages.length === 0) {
+            supportedLanguages = ['IND'];
+          }
+
+          // 处理 npc_roles 字段
+          let npcRoles = [];
+          if (rawEscapeRoom.npc_roles) {
+            if (typeof rawEscapeRoom.npc_roles === 'string') {
+              try {
+                npcRoles = JSON.parse(rawEscapeRoom.npc_roles);
+              } catch (e) {
+                console.warn('解析密室NPC角色失败:', e);
+                npcRoles = [];
+              }
+            } else if (Array.isArray(rawEscapeRoom.npc_roles)) {
+              npcRoles = rawEscapeRoom.npc_roles;
+            }
+          }
+
+          // 处理 cover_images 字段
+          let coverImages = [];
+          if (rawEscapeRoom.cover_images) {
+            if (typeof rawEscapeRoom.cover_images === 'string') {
+              try {
+                coverImages = JSON.parse(rawEscapeRoom.cover_images);
+              } catch (e) {
+                console.warn('解析密室图片失败:', e);
+                coverImages = [];
+              }
+            } else if (Array.isArray(rawEscapeRoom.cover_images)) {
+              coverImages = rawEscapeRoom.cover_images;
+            }
+          }
+
+          itemInfo = {
+            ...rawEscapeRoom,
+            supported_languages: supportedLanguages,
+            npc_roles: npcRoles,
+            cover_images: coverImages
+          };
+        }
+        
         finalPrice = itemInfo?.store_price || itemInfo?.price || 0;
       }
 
@@ -1829,33 +2116,38 @@ class OrderService extends BaseService {
     }
   }
 
-  // 🆕 清理数据字段，只保留数据库表中存在的字段
-  cleanOrderData(data) {
-    // 定义数据库表中存在的字段
-    const validFields = [
-      'company_id', 'store_id', 'room_id', 'order_type', 'order_date', 'weekday', 'language',
-      'start_time', 'end_time', 'duration', 'customer_name', 'customer_phone', 'player_count',
-      'internal_support', 'script_id', 'script_name', 'game_host_id', 'npc_id',
-      'escape_room_id', 'escape_room_name', 'escape_room_npc_roles', 'is_group_booking', 'include_photos', 'include_cctv',
-      'booking_type', 'is_free', 'unit_price', 'total_amount', 'payment_status', 'payment_date', 'payment_method',
-      'promo_code', 'promo_quantity', 'promo_discount', 'pic_id', 'pic_payment', 'notes',
-      'status', 'created_by', 'updated_by', 'images',
-      // 🆕 新增财务字段
-      'original_price', 'discount_price', 'discount_amount', 'prepaid_amount', 'remaining_amount',
-      'tax_amount', 'service_fee', 'manual_discount', 'activity_discount', 'member_discount',
-      'package_discount', 'refund_amount', 'refund_reason', 'refund_date',
-      'actual_start_time', 'actual_end_time'
-    ];
-
-    const cleanedData = {};
-    validFields.forEach(field => {
-      if (data[field] !== undefined) {
-        cleanedData[field] = data[field];
+  // 🆕 处理订单详细价格计算结果
+  processOrderPriceDetail(data) {
+    const priceDetail = {};
+    
+    if (data.price_detail) {
+      const detail = data.price_detail;
+      
+      // 多笔付款统计字段
+      if (detail.total_players_with_discount !== undefined) {
+        priceDetail.total_players_with_discount = detail.total_players_with_discount;
       }
-    });
-
-    return cleanedData;
+      if (detail.total_players_without_discount !== undefined) {
+        priceDetail.total_players_without_discount = detail.total_players_without_discount;
+      }
+      if (detail.total_discount_percentage !== undefined) {
+        priceDetail.total_discount_percentage = detail.total_discount_percentage;
+      }
+      if (detail.total_original_amount !== undefined) {
+        priceDetail.total_original_amount = detail.total_original_amount;
+      }
+      if (detail.total_discount_amount !== undefined) {
+        priceDetail.total_discount_amount = detail.total_discount_amount;
+      }
+      if (detail.total_final_amount !== undefined) {
+        priceDetail.total_final_amount = detail.total_final_amount;
+      }
+    }
+    
+    return priceDetail;
   }
+
+
 
   // 🆕 更新订单状态
   async updateStatus(orderId, status, user) {
@@ -1966,6 +2258,707 @@ class OrderService extends BaseService {
 
     const updatedOrder = await this.model.update(orderId, updateData);
     return this.formatTimeFields(updatedOrder, user.user_timezone);
+  }
+
+  // 🆕 获取可用的角色定价模板（用于订单折扣选择）
+  async getAvailableRolePricingTemplates(storeId, options = {}, user) {
+    try {
+      // 权限验证
+      await PermissionChecker.requirePermission(user, 'order.view');
+      
+      // 验证门店访问权限
+      const availableStores = await this.getAvailableStores(user);
+      if (!availableStores.some(store => store.id === storeId)) {
+        throw new Error('权限不足');
+      }
+
+      // 获取角色定价模板服务
+      const rolePricingTemplateService = require('./rolePricingTemplateService');
+      
+      // 获取门店可用的角色定价模板
+      const templates = await rolePricingTemplateService.getTemplatesByStore(storeId, user);
+      
+      // 过滤有效的模板
+      const activeTemplates = templates.filter(template => {
+        // 检查模板是否启用
+        if (!template.is_active) return false;
+        
+        // 检查有效期
+        if (template.end_date && options.date) {
+          const endDate = new Date(template.end_date);
+          const queryDate = new Date(options.date);
+          if (queryDate > endDate) return false;
+        }
+        
+        return true;
+      });
+      
+      return {
+        store_id: storeId,
+        templates: activeTemplates,
+        total_count: activeTemplates.length
+      };
+    } catch (error) {
+      console.error('获取可用角色定价模板失败:', error);
+      throw error;
+    }
+  }
+
+  // 🆕 获取可用的定价日历规则（用于订单折扣选择）
+  async getAvailablePricingCalendar(storeId, date, options = {}, user) {
+    try {
+      // 权限验证
+      await PermissionChecker.requirePermission(user, 'order.view');
+      
+      // 验证门店访问权限
+      const availableStores = await this.getAvailableStores(user);
+      if (!availableStores.some(store => store.id === storeId)) {
+        throw new Error('权限不足');
+      }
+
+      // 获取定价日历服务
+      const pricingCalendarService = require('./pricingCalendarService');
+      
+      // 获取指定日期的定价规则 - 修正方法调用参数
+      const calendarRule = await pricingCalendarService.getCalendarByDate(date, storeId, user);
+      
+      // 构建返回结果
+      const activeRules = [];
+      if (calendarRule && calendarRule.is_active) {
+        // 检查门店范围
+        if (!calendarRule.store_id || calendarRule.store_id === storeId) {
+          activeRules.push(calendarRule);
+        }
+      }
+      
+      return {
+        store_id: storeId,
+        date: date,
+        rules: activeRules,
+        total_count: activeRules.length
+      };
+    } catch (error) {
+      console.error('获取可用定价日历失败:', error);
+      throw error;
+    }
+  }
+
+  // 🆕 计算订单折扣预览
+  async calculateOrderDiscount(discountData, user) {
+    try {
+      // 权限验证
+      await PermissionChecker.requirePermission(user, 'order.view');
+      
+      const { 
+        store_id, 
+        item_type, 
+        item_id, 
+        date, 
+        original_amount, 
+        player_count,
+        role_pricing_template_id,
+        pricing_calendar_id 
+      } = discountData;
+      
+      let finalAmount = original_amount;
+      let discountAmount = 0;
+      let appliedDiscounts = [];
+      
+      // 获取基础价格
+      let itemPrice = original_amount;
+      if (item_type && item_id) {
+        if (item_type === 'script') {
+          const scriptModel = require('../models/scriptModel');
+          const script = await scriptModel.findByIdAndStoreId(item_id, store_id);
+          if (script) {
+            itemPrice = script.store_price || script.price || 0;
+          }
+        } else if (item_type === 'escape_room') {
+          const escapeRoomModel = require('../models/escapeRoomModel');
+          const escapeRoom = await escapeRoomModel.findByIdAndStoreId(item_id, store_id);
+          if (escapeRoom) {
+            itemPrice = escapeRoom.store_price || escapeRoom.price || 0;
+          }
+        }
+      }
+      
+      // 应用角色定价模板折扣
+      if (role_pricing_template_id) {
+        const rolePricingTemplateService = require('./rolePricingTemplateService');
+        const discountedPrice = await rolePricingTemplateService.calculateRolePrice(
+          itemPrice, 
+          role_pricing_template_id, 
+          user
+        );
+        
+        if (discountedPrice < itemPrice) {
+          const roleDiscount = itemPrice - discountedPrice;
+          discountAmount += roleDiscount;
+          finalAmount -= roleDiscount;
+          
+          // 获取模板详情
+          const template = await rolePricingTemplateService.getTemplateDetail(role_pricing_template_id, user);
+          appliedDiscounts.push({
+            type: 'role_pricing',
+            template_id: role_pricing_template_id,
+            template_name: template.role_name,
+            discount_type: template.discount_type,
+            discount_value: template.discount_value,
+            discount_amount: roleDiscount
+          });
+        }
+      }
+      
+      // 应用定价日历折扣
+      if (pricing_calendar_id) {
+        const pricingCalendarService = require('./pricingCalendarService');
+        const calendarRule = await pricingCalendarService.getCalendarDetail(pricing_calendar_id, user);
+        
+        if (calendarRule && calendarRule.discount_type !== 'none') {
+          let calendarDiscount = 0;
+          
+          if (calendarRule.discount_type === 'percentage') {
+            calendarDiscount = (itemPrice * calendarRule.discount_value) / 100;
+          } else if (calendarRule.discount_type === 'fixed_amount') {
+            calendarDiscount = calendarRule.discount_value;
+          }
+          
+          if (calendarDiscount > 0) {
+            discountAmount += calendarDiscount;
+            finalAmount -= calendarDiscount;
+            
+            appliedDiscounts.push({
+              type: 'pricing_calendar',
+              calendar_id: pricing_calendar_id,
+              calendar_name: calendarRule.name,
+              discount_type: calendarRule.discount_type,
+              discount_value: calendarRule.discount_value,
+              discount_amount: calendarDiscount
+            });
+          }
+        }
+      }
+      
+      // 确保最终金额不为负数
+      if (finalAmount < 0) {
+        finalAmount = 0;
+      }
+      
+      return {
+        original_amount: original_amount,
+        item_price: itemPrice,
+        discount_amount: discountAmount,
+        final_amount: finalAmount,
+        player_count: player_count,
+        per_player_amount: player_count > 0 ? finalAmount / player_count : 0,
+        applied_discounts: appliedDiscounts,
+        calculation_details: {
+          base_calculation: `${itemPrice} (基础价格)`,
+          total_discount: `${discountAmount} (总折扣)`,
+          final_calculation: `${itemPrice} - ${discountAmount} = ${finalAmount}`
+        }
+      };
+    } catch (error) {
+      console.error('计算订单折扣失败:', error);
+      throw error;
+    }
+  }
+
+  // 🆕 获取订单支付信息汇总（包含玩家和支付记录）
+  async getOrderPaymentSummary(orderId, user) {
+    try {
+      // 权限验证
+      await PermissionChecker.requirePermission(user, 'order.view');
+      
+      // 获取订单基本信息
+      const order = await this.getById(orderId, user);
+      if (!order) {
+        throw new Error('订单不存在');
+      }
+      
+      // 根据订单类型返回不同的数据结构
+      if (order.enable_multi_payment) {
+        // 多笔支付订单：直接从数据库获取详细数据
+        return await this.getMultiPaymentOrderSummary(orderId, order, user);
+      } else {
+        // 单笔支付订单：从orders表获取数据
+        return await this.getSinglePaymentOrderSummary(orderId, order, user);
+      }
+      
+    } catch (error) {
+      console.error('获取订单支付信息汇总失败:', error);
+      throw error;
+    }
+  }
+
+  // 🆕 获取多笔支付订单汇总信息
+  async getMultiPaymentOrderSummary(orderId, order, user) {
+    const orderPlayerService = require('./orderPlayerService');
+    const orderPaymentService = require('./orderPaymentService');
+    
+    // 从数据库获取玩家和支付记录
+    const players = await orderPlayerService.getPlayersByOrderId(orderId, true, user);
+    const payments = await orderPaymentService.getPaymentsByOrderId(orderId, true, user);
+    
+    // 计算统计信息（直接基于数据库数据）
+    const stats = this.calculateStatsFromData(players, payments);
+    
+    return {
+      order: order,
+      players: players,
+      payments: payments,
+      paymentStats: stats,
+      summary: {
+        order_id: orderId,
+        is_multi_payment: true,
+        total_players: players.length,
+        total_payments: payments.length,
+        ...stats
+      }
+    };
+  }
+
+  // 🆕 获取单笔支付订单汇总信息
+  async getSinglePaymentOrderSummary(orderId, order, user) {
+    // 单笔支付订单数据直接来源于orders表
+    const stats = {
+      total_players: order.player_count || 0,
+      paid_players: order.payment_status === 'FULL' ? (order.player_count || 0) : 0,
+      partial_players: order.payment_status === 'DP' ? (order.player_count || 0) : 0,
+      pending_players: order.payment_status === 'Not Yet' ? (order.player_count || 0) : 0,
+      total_final_amount: parseFloat(order.total_amount || 0),
+      paid_amount: order.payment_status === 'FULL' ? parseFloat(order.total_amount || 0) : 0,
+      pending_amount: order.payment_status !== 'FULL' ? parseFloat(order.total_amount || 0) : 0,
+      // 折扣统计信息（基于orders表的字段）
+      total_original_amount: parseFloat(order.original_price || order.total_amount || 0),
+      total_discount_amount: parseFloat(order.discount_amount || 0),
+      discount_percentage: parseFloat(order.total_discount_percentage || 0),
+      has_discount: parseFloat(order.discount_amount || 0) > 0,
+      players_with_discount: parseInt(order.total_players_with_discount || 0),
+      players_without_discount: parseInt(order.total_players_without_discount || order.player_count || 0)
+    };
+
+    // 生成基础的玩家和支付记录用于显示
+    const players = this.generateSinglePaymentPlayers(order);
+    const payments = this.generateSinglePaymentRecord(order);
+
+    return {
+      order: order,
+      players: players,
+      payments: payments,
+      paymentStats: stats,
+      summary: {
+        order_id: orderId,
+        is_multi_payment: false,
+        total_players: order.player_count || 0,
+        total_payments: 1,
+        ...stats
+      }
+    };
+  }
+
+  // 🆕 基于实际数据计算统计信息
+  calculateStatsFromData(players, payments) {
+    const totalPlayers = players.length;
+    const totalOriginalAmount = players.reduce((sum, p) => sum + parseFloat(p.original_amount || 0), 0);
+    const totalDiscountAmount = players.reduce((sum, p) => sum + parseFloat(p.discount_amount || 0), 0);
+    const totalFinalAmount = players.reduce((sum, p) => sum + parseFloat(p.final_amount || 0), 0);
+    
+    const playersWithDiscount = players.filter(p => parseFloat(p.discount_amount || 0) > 0).length;
+    const playersWithoutDiscount = totalPlayers - playersWithDiscount;
+    
+    // 统计支付状态
+    const paidPlayers = players.filter(p => p.payment_status === 'paid' || p.payment_status === 'FULL').length;
+    const partialPlayers = players.filter(p => p.payment_status === 'partial' || p.payment_status === 'DP').length;
+    const pendingPlayers = players.filter(p => p.payment_status === 'pending' || p.payment_status === 'Not Yet').length;
+    
+    // 统计支付金额
+    const totalPaidAmount = payments.reduce((sum, payment) => 
+      sum + (payment.payment_status === 'confirmed' || payment.payment_status === 'paid' ? parseFloat(payment.payment_amount || 0) : 0), 0
+    );
+    const totalPendingAmount = payments.reduce((sum, payment) => 
+      sum + (payment.payment_status === 'pending' ? parseFloat(payment.payment_amount || 0) : 0), 0
+    );
+
+    return {
+      total_players: totalPlayers,
+      paid_players: paidPlayers,
+      partial_players: partialPlayers,
+      pending_players: pendingPlayers,
+      total_final_amount: Math.round(totalFinalAmount * 100) / 100,
+      paid_amount: Math.round(totalPaidAmount * 100) / 100,
+      pending_amount: Math.round(totalPendingAmount * 100) / 100,
+      total_original_amount: Math.round(totalOriginalAmount * 100) / 100,
+      total_discount_amount: Math.round(totalDiscountAmount * 100) / 100,
+      discount_percentage: totalOriginalAmount > 0 ? Math.round((totalDiscountAmount / totalOriginalAmount) * 10000) / 100 : 0,
+      has_discount: totalDiscountAmount > 0,
+      players_with_discount: playersWithDiscount,
+      players_without_discount: playersWithoutDiscount
+    };
+  }
+
+  // 🆕 为单笔支付订单生成基础玩家记录（用于显示）
+  generateSinglePaymentPlayers(order) {
+    const players = [];
+    const playerCount = order.player_count || 0;
+    const unitPrice = parseFloat(order.unit_price || order.total_amount || 0) / playerCount;
+    
+    for (let i = 1; i <= playerCount; i++) {
+      players.push({
+        id: `single_player_${i}`,
+        player_name: `玩家 ${i}`,
+        player_phone: order.customer_phone || '',
+        selected_role_name: '标准玩家',
+        original_amount: Math.round(unitPrice * 100) / 100,
+        discount_amount: 0,
+        final_amount: Math.round(unitPrice * 100) / 100,
+        payment_status: order.payment_status === 'FULL' ? 'paid' : 
+                       order.payment_status === 'DP' ? 'partial' : 'pending',
+        discount_type: 'none',
+        discount_percentage: 0,
+        discount_fixed_amount: 0
+      });
+    }
+    
+    return players;
+  }
+
+  // 🆕 为单笔支付订单生成基础支付记录（用于显示）
+  generateSinglePaymentRecord(order) {
+    return [{
+      id: 'single_payment',
+      payer_name: order.customer_name || '客户',
+      payer_phone: order.customer_phone || '',
+      payment_amount: parseFloat(order.total_amount || 0),
+      payment_method: order.payment_method || 'Bank Transfer',
+      payment_date: order.payment_date || order.created_at,
+      payment_status: order.payment_status === 'FULL' ? 'confirmed' : 
+                     order.payment_status === 'DP' ? 'partial' : 'pending',
+      covers_player_count: order.player_count || 0,
+      payment_for_roles: ['标准玩家'],
+      notes: '单笔支付订单记录'
+    }];
+  }
+
+  // 🆕 多笔付款订单创建
+  async createOrderWithMultiPayment(orderData, user) {
+    await PermissionChecker.requirePermission(user, 'order.create');
+    
+    const pool = require('../database/connection');
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const { 
+        // 基础订单信息
+        basicOrderData,
+        // 多笔付款配置
+        paymentItems,
+        // 上传的图片
+        uploadedImages = []
+      } = orderData;
+      
+      // 1. 创建基础订单
+      const orderId = await this.create({
+        ...basicOrderData,
+        // 🆕 标记为多笔付款模式
+        enable_multi_payment: true,
+        payment_images: uploadedImages
+      }, user);
+      
+      console.log('🔄 创建订单成功:', orderId);
+      
+      // 2. 根据付款项创建玩家记录
+      const orderPlayerModel = require('../models/orderPlayerModel');
+      const players = [];
+      let playerOrder = 1;
+      
+      for (const item of paymentItems) {
+        // 为每个付款项创建对应数量的玩家
+        for (let i = 0; i < item.players; i++) {
+          const player = {
+            order_id: orderId,
+            player_name: `${item.name} - 第${i + 1}人`,
+            player_phone: '', // 前端可以后续补充
+            selected_role_name: item.type === 'role_discount' ? item.name : '标准玩家',
+            original_amount: parseFloat(item.unitPrice) || 0,
+            discount_amount: parseFloat(item.unitPrice) - parseFloat(item.unitPrice),
+            final_amount: parseFloat(item.amount / item.players) || 0, // 平均分摊到每个玩家
+            payment_status: 'pending',
+            player_order: playerOrder++,
+            notes: item.description
+          };
+          
+          players.push(player);
+        }
+      }
+      
+      // 批量创建玩家记录
+      const createdPlayers = await orderPlayerModel.createBatch(players);
+      console.log('👥 创建玩家记录:', createdPlayers.length, '个');
+      
+      // 3. 创建支付记录
+      const orderPaymentModel = require('../models/orderPaymentModel');
+      const payments = [];
+      
+      for (const item of paymentItems) {
+        // 找到这个付款项对应的玩家IDs
+        const itemPlayerIds = createdPlayers
+          .filter(player => player.notes === item.description)
+          .map(player => player.id.toString());
+        
+        const payment = {
+          order_id: orderId,
+          payer_name: item.payer_name || basicOrderData.customer_name || '待填写',
+          payer_phone: item.payer_phone || basicOrderData.customer_phone || '',
+          payment_amount: parseFloat(item.amount) || 0,
+          payment_method: item.payment_method || 'Bank Transfer',
+          payment_date: new Date(),
+          payment_status: item.payment_status || 'pending',
+          covers_player_ids: itemPlayerIds,
+          covers_player_count: itemPlayerIds.length,
+          payment_for_roles: [item.name],
+          original_total_amount: parseFloat(item.amount) || 0,
+          discount_total_amount: 0,
+          payment_proof_images: [], // 支付凭证可以后续上传
+          notes: `${item.name} - ${item.description}`,
+          created_by: user.id
+        };
+        
+        payments.push(payment);
+      }
+      
+      // 批量创建支付记录
+      const createdPayments = [];
+      for (const payment of payments) {
+        const createdPayment = await orderPaymentModel.create(payment);
+        createdPayments.push(createdPayment);
+      }
+      
+      console.log('💳 创建支付记录:', createdPayments.length, '个');
+      
+      await client.query('COMMIT');
+      
+      // 4. 返回完整的订单信息
+      const completeOrder = await this.getById(orderId, user);
+      
+      return {
+        order: completeOrder,
+        players: this.formatTimeFieldsArray(createdPlayers),
+        payments: this.formatTimeFieldsArray(createdPayments),
+        summary: {
+          total_players: players.length,
+          total_payments: payments.length,
+          total_amount: paymentItems.reduce((sum, item) => sum + item.amount, 0)
+        }
+      };
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('❌ 多笔付款订单创建失败:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // 🆕 生成付款项建议（优化版 - 按人数拆分，每人一笔）
+  async generatePaymentItemsSuggestion(orderData, user) {
+    await PermissionChecker.requirePermission(user, 'order.view');
+    
+    const { 
+      unit_price, 
+      player_count, 
+      selected_role_templates = [] 
+    } = orderData;
+    
+    console.log('🔧 开始生成付款项建议(按人数拆分):', {
+      unit_price,
+      player_count,
+      selected_role_templates_count: selected_role_templates.length
+    });
+    
+    const unitPriceNum = parseFloat(unit_price) || 0;
+    const totalPlayerCount = parseInt(player_count) || 0;
+    
+    const items = [];
+    let playerIndex = 1; // 玩家序号
+    let totalOriginalAmount = 0;
+    let totalDiscountAmount = 0;
+    
+    // 1. 处理每个角色模板，按人数拆分为单独的付款项
+    for (const roleTemplate of selected_role_templates) {
+      const playerCountNum = parseInt(roleTemplate.player_count) || 0;
+      
+      if (playerCountNum <= 0) continue;
+      
+      // 获取角色定价模板的详细信息
+      let templateDetails = null;
+      try {
+        if (roleTemplate.template_id) {
+          const rolePricingTemplateService = require('./rolePricingTemplateService');
+          templateDetails = await rolePricingTemplateService.getTemplateDetail(roleTemplate.template_id, user);
+        }
+      } catch (error) {
+        console.warn('获取角色定价模板详情失败:', error.message);
+      }
+      
+      // 计算单人的折扣信息
+      let singlePlayerDiscountAmount = 0;
+      let singlePlayerFinalAmount = unitPriceNum;
+      let discountPercentage = 0;
+      
+      if (templateDetails) {
+        const { discount_type, discount_value } = templateDetails;
+        
+        if (discount_type === 'percentage' && discount_value > 0) {
+          // 百分比折扣
+          const discountValueNum = parseFloat(discount_value);
+          singlePlayerDiscountAmount = unitPriceNum * (discountValueNum / 100);
+          singlePlayerFinalAmount = unitPriceNum - singlePlayerDiscountAmount;
+          discountPercentage = discountValueNum;
+        } else if (discount_type === 'fixed' && discount_value > 0) {
+          // 固定金额折扣
+          const discountValueNum = parseFloat(discount_value);
+          singlePlayerDiscountAmount = Math.min(discountValueNum, unitPriceNum);
+          singlePlayerFinalAmount = Math.max(0, unitPriceNum - singlePlayerDiscountAmount);
+          discountPercentage = unitPriceNum > 0 ? (singlePlayerDiscountAmount / unitPriceNum) * 100 : 0;
+        }
+        
+        console.log(`💰 角色「${templateDetails.role_name}」单人折扣计算:`, {
+          单价: unitPriceNum,
+          折扣类型: discount_type,
+          折扣值: discount_value,
+          单人折扣金额: singlePlayerDiscountAmount,
+          单人最终金额: singlePlayerFinalAmount,
+          折扣百分比: discountPercentage
+        });
+      }
+      
+      // 构建折扣显示文本
+      let discountDisplay = '';
+      if (templateDetails && templateDetails.discount_type) {
+        if (templateDetails.discount_type === 'percentage') {
+          discountDisplay = `-${templateDetails.discount_value}%`;
+        } else if (templateDetails.discount_type === 'fixed') {
+          discountDisplay = `-Rp ${templateDetails.discount_value.toLocaleString()}`;
+        }
+      } else {
+        discountDisplay = '角色折扣';
+      }
+      
+      // 为该角色模板的每个玩家创建独立的付款项
+      for (let i = 0; i < playerCountNum; i++) {
+        items.push({
+          id: `player_${playerIndex}`,
+          type: 'role_discount',
+          name: templateDetails?.role_name || roleTemplate.role_name || '折扣角色',
+          description: `玩家${playerIndex} · ${discountDisplay}`,
+          amount: parseFloat(singlePlayerFinalAmount.toFixed(2)),
+          original_amount: parseFloat(unitPriceNum.toFixed(2)),
+          discount_amount: parseFloat(singlePlayerDiscountAmount.toFixed(2)),
+          discount_percentage: parseFloat(discountPercentage.toFixed(2)),
+          players: 1,
+          player_index: playerIndex,
+          unitPrice: parseFloat(unitPriceNum.toFixed(2)),
+          payment_method: 'Bank Transfer',
+          payment_status: 'pending',
+          canSplit: false,
+          canDelete: false,
+          // 折扣详情
+          discount_type: templateDetails?.discount_type || 'none',
+          discount_value: templateDetails?.discount_value || 0,
+          template_id: roleTemplate.template_id,
+          template_name: templateDetails?.role_name || roleTemplate.role_name || '未知角色'
+        });
+        
+        totalOriginalAmount += unitPriceNum;
+        totalDiscountAmount += singlePlayerDiscountAmount;
+        playerIndex++;
+      }
+    }
+    
+    // 2. 为无折扣玩家创建付款项（每人一笔）
+    const usedPlayers = playerIndex - 1;
+    const remainingPlayers = totalPlayerCount - usedPlayers;
+    
+    for (let i = 0; i < remainingPlayers; i++) {
+      items.push({
+        id: `player_${playerIndex}`,
+        type: 'standard',
+        name: '标准定价',
+        description: `玩家${playerIndex} · 无折扣`,
+        amount: parseFloat(unitPriceNum.toFixed(2)),
+        original_amount: parseFloat(unitPriceNum.toFixed(2)),
+        discount_amount: 0,
+        discount_percentage: 0,
+        players: 1,
+        player_index: playerIndex,
+        unitPrice: parseFloat(unitPriceNum.toFixed(2)),
+        payment_method: 'Bank Transfer',
+        payment_status: 'pending',
+        canSplit: true,
+        canDelete: false,
+        discount_type: 'none',
+        discount_value: 0,
+        template_id: null,
+        template_name: '标准定价'
+      });
+      
+      totalOriginalAmount += unitPriceNum;
+      playerIndex++;
+    }
+    
+    // 计算最终总金额
+    const finalTotalAmount = items.reduce((sum, item) => {
+      const amount = parseFloat(item.amount) || 0;
+      return sum + amount;
+    }, 0);
+    
+    // 计算统计信息
+    const playersWithDiscount = items.filter(item => item.discount_amount > 0).length;
+    const playersWithoutDiscount = items.filter(item => item.discount_amount === 0).length;
+    const averageDiscountPercentage = totalOriginalAmount > 0 ? 
+      parseFloat(((totalDiscountAmount / totalOriginalAmount) * 100).toFixed(2)) : 0;
+    
+    const result = {
+      items,
+      summary: {
+        total_items: items.length,
+        total_players: totalPlayerCount,
+        // 🎯 完整的价格信息
+        total_original_amount: parseFloat(totalOriginalAmount.toFixed(2)),
+        total_discount_amount: parseFloat(totalDiscountAmount.toFixed(2)),
+        total_amount: parseFloat(finalTotalAmount.toFixed(2)),
+        total_savings: parseFloat(totalDiscountAmount.toFixed(2)),
+        // 统计信息
+        role_discount_items: items.filter(item => item.type === 'role_discount').length,
+        standard_items: items.filter(item => item.type === 'standard').length,
+        players_with_discount: playersWithDiscount,
+        players_without_discount: playersWithoutDiscount,
+        average_discount_percentage: averageDiscountPercentage,
+        // 详细分组统计
+        discount_breakdown: {
+          percentage_discounts: items.filter(item => item.discount_type === 'percentage').length,
+          fixed_discounts: items.filter(item => item.discount_type === 'fixed').length,
+          no_discounts: items.filter(item => item.discount_type === 'none').length
+        }
+      }
+    };
+    
+    console.log('📦 付款项建议生成完成(按人数拆分):', {
+      总人数: result.summary.total_players,
+      总付款项: result.summary.total_items,
+      原价总额: result.summary.total_original_amount,
+      折扣总额: result.summary.total_discount_amount,
+      实付总额: result.summary.total_amount,
+      平均折扣: `${result.summary.average_discount_percentage}%`,
+      享受折扣人数: result.summary.players_with_discount,
+      标准价格人数: result.summary.players_without_discount
+    });
+    
+    return result;
   }
 }
 

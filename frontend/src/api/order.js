@@ -200,6 +200,14 @@ export const orderAPI = {
       method: 'put',
       data
     })
+  },
+
+  // 🆕 获取订单支付信息汇总
+  getOrderPaymentSummary(orderId) {
+    return request({
+      url: `/api/order/${orderId}/payment-summary`,
+      method: 'get'
+    })
   }
 }
 
@@ -256,3 +264,22 @@ export const checkCustomTimeSlot = (storeId, roomId, params) => {
     params
   })
 } 
+
+// 🆕 多笔付款相关API
+export const createOrderWithMultiPayment = (data) => {
+  console.log('📤 创建多笔付款订单API调用:', data);
+  return request({
+    url: '/api/order/multi-payment',
+    method: 'post',
+    data
+  });
+};
+
+export const generatePaymentItemsSuggestion = (data) => {
+  console.log('📤 生成付款项建议API调用:', data);
+  return request({
+    url: '/api/order/payment-items-suggestion',
+    method: 'post',
+    data
+  });
+}; 

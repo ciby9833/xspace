@@ -42,7 +42,18 @@ const migrateOrdersEnhanced = async () => {
       'ADD COLUMN IF NOT EXISTS actual_end_time TIMESTAMPTZ', // 实际结束时间
       
       // 密室NPC角色字段
-      'ADD COLUMN IF NOT EXISTS escape_room_npc_roles TEXT' // 密室NPC角色（JSON字符串）
+      'ADD COLUMN IF NOT EXISTS escape_room_npc_roles TEXT', // 密室NPC角色（JSON字符串）
+      
+      // 🆕 多人支付相关字段
+      'ADD COLUMN IF NOT EXISTS enable_multi_payment BOOLEAN DEFAULT false', // 是否启用多人支付
+      'ADD COLUMN IF NOT EXISTS total_players_amount DECIMAL(15,2) DEFAULT 0', // 所有玩家应付总额
+      'ADD COLUMN IF NOT EXISTS total_collected_amount DECIMAL(15,2) DEFAULT 0', // 已收款总额
+      'ADD COLUMN IF NOT EXISTS collection_status VARCHAR(20) DEFAULT \'pending\'', // 收款状态
+      'ADD COLUMN IF NOT EXISTS payment_deadline DATE', // 支付截止日期
+      'ADD COLUMN IF NOT EXISTS multi_payment_notes TEXT', // 多人支付备注
+      
+      // 🆕 角色定价相关字段
+      'ADD COLUMN IF NOT EXISTS selected_role_templates JSONB' // 选择的角色定价模板信息
     ];
 
     for (const field of financialFields) {
@@ -130,7 +141,11 @@ const migrateOrdersEnhanced = async () => {
       'CREATE INDEX IF NOT EXISTS idx_orders_refund_amount ON orders(refund_amount)',
       'CREATE INDEX IF NOT EXISTS idx_orders_refund_date ON orders(refund_date)',
       'CREATE INDEX IF NOT EXISTS idx_orders_actual_start_time ON orders(actual_start_time)',
-      'CREATE INDEX IF NOT EXISTS idx_orders_actual_end_time ON orders(actual_end_time)'
+      'CREATE INDEX IF NOT EXISTS idx_orders_actual_end_time ON orders(actual_end_time)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_enable_multi_payment ON orders(enable_multi_payment)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_collection_status ON orders(collection_status)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_payment_deadline ON orders(payment_deadline)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_selected_role_templates ON orders USING GIN (selected_role_templates)' // JSONB字段使用GIN索引
     ];
 
     for (const indexSQL of newIndexes) {
@@ -163,6 +178,13 @@ const migrateOrdersEnhanced = async () => {
       COMMENT ON COLUMN orders.actual_start_time IS '实际开始时间';
       COMMENT ON COLUMN orders.actual_end_time IS '实际结束时间';
       COMMENT ON COLUMN orders.escape_room_npc_roles IS '密室NPC角色（JSON字符串）';
+      COMMENT ON COLUMN orders.enable_multi_payment IS '是否启用多人支付';
+      COMMENT ON COLUMN orders.total_players_amount IS '所有玩家应付总额';
+      COMMENT ON COLUMN orders.total_collected_amount IS '已收款总额';
+      COMMENT ON COLUMN orders.collection_status IS '收款状态：pending-待收款、partial-部分收款、completed-收款完成';
+      COMMENT ON COLUMN orders.payment_deadline IS '支付截止日期';
+      COMMENT ON COLUMN orders.multi_payment_notes IS '多人支付备注';
+      COMMENT ON COLUMN orders.selected_role_templates IS '选择的角色定价模板信息（JSON格式）';
     `);
 
     // 6. 创建计算总金额的触发器函数
@@ -215,7 +237,8 @@ const migrateOrdersEnhanced = async () => {
         COUNT(*) as total_orders,
         COUNT(CASE WHEN original_price > 0 THEN 1 END) as orders_with_price,
         COUNT(CASE WHEN discount_amount > 0 THEN 1 END) as orders_with_discount,
-        COUNT(CASE WHEN refund_amount > 0 THEN 1 END) as orders_with_refund
+        COUNT(CASE WHEN refund_amount > 0 THEN 1 END) as orders_with_refund,
+        COUNT(CASE WHEN enable_multi_payment = true THEN 1 END) as multi_payment_orders
       FROM orders
     `);
 
@@ -224,6 +247,7 @@ const migrateOrdersEnhanced = async () => {
     console.log(`   有价格的订单: ${stats.rows[0].orders_with_price}`);
     console.log(`   有优惠的订单: ${stats.rows[0].orders_with_discount}`);
     console.log(`   有退款的订单: ${stats.rows[0].orders_with_refund}`);
+    console.log(`   多人支付订单: ${stats.rows[0].multi_payment_orders}`);
 
     console.log('✅ 订单表增强字段迁移完成');
     

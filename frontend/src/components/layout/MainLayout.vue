@@ -81,6 +81,14 @@
         </a-menu-item>
 
         <a-menu-item 
+          key="/payment-query"
+          v-if="authStore.canAccessMenu('/payment-query')"
+        >
+          <CreditCardOutlined />
+          <span>支付查询</span>
+        </a-menu-item>
+
+        <a-menu-item 
           key="/booking"
           v-if="authStore.canAccessMenu('/booking')"
         >
@@ -103,6 +111,23 @@
           <SettingOutlined />
           <span>权限管理</span>
         </a-menu-item>
+
+        <a-menu-item 
+          key="/role-pricing"
+          v-if="authStore.canAccessMenu('/role-pricing')"
+        >
+          <DollarOutlined />
+          <span>角色定价</span>
+        </a-menu-item>
+
+        <!-- 定价日历功能暂时隐藏 -->
+        <!-- <a-menu-item 
+          key="/pricing-calendar"
+          v-if="authStore.canAccessMenu('/pricing-calendar')"
+        >
+          <CalendarOutlined />
+          <span>定价日历</span>
+        </a-menu-item> -->
       </a-menu>
     </a-layout-sider>
     
@@ -184,6 +209,8 @@ import {
   CalendarOutlined,
   PlayCircleOutlined,
   SettingOutlined,
+  DollarOutlined,
+  CreditCardOutlined,
   DownOutlined,
   LogoutOutlined,
   ReloadOutlined

@@ -136,6 +136,7 @@ const PERMISSION_MODULES = {
       'order.edit',         // 编辑订单
       'order.delete',       // 删除订单
       'order.assign',       // 分配订单
+      'order.payment.summary', // 查看订单支付汇总
       'order.manage'        // 订单管理（包含所有订单操作）
     ]
   },
@@ -147,6 +148,47 @@ const PERMISSION_MODULES = {
       'game_host.complete', // 完成游戏
       'game_host.update',   // 更新订单信息
       'game_host.manage'    // Game Host管理（包含所有Game Host操作）
+    ]
+  },
+  order_player: {
+    name: '订单参与玩家',
+    permissions: [
+      'order.player.view',    // 查看订单参与玩家
+      'order.player.create',  // 创建订单参与玩家
+      'order.player.edit',    // 编辑订单参与玩家
+      'order.player.delete',  // 删除订单参与玩家
+      'order.player.manage'   // 订单参与玩家管理（包含所有操作）
+    ]
+  },
+  order_payment: {
+    name: '支付记录',
+    permissions: [
+      'order.payment.view',    // 查看支付记录
+      'order.payment.create',  // 创建支付记录
+      'order.payment.edit',    // 编辑支付记录
+      'order.payment.delete',  // 删除支付记录
+      'order.payment.confirm', // 确认支付
+      'order.payment.manage'   // 支付记录管理（包含所有操作）
+    ]
+  },
+  role_pricing: {
+    name: '角色定价模板',
+    permissions: [
+      'role.pricing.view',    // 查看角色定价模板
+      'role.pricing.create',  // 创建角色定价模板
+      'role.pricing.edit',    // 编辑角色定价模板
+      'role.pricing.delete',  // 删除角色定价模板
+      'role.pricing.manage'   // 角色定价模板管理（包含所有操作）
+    ]
+  },
+  pricing_calendar: {
+    name: '定价日历',
+    permissions: [
+      'pricing.calendar.view',    // 查看定价日历
+      'pricing.calendar.create',  // 创建定价日历
+      'pricing.calendar.edit',    // 编辑定价日历
+      'pricing.calendar.delete',  // 删除定价日历
+      'pricing.calendar.manage'   // 定价日历管理（包含所有操作）
     ]
   }
 };

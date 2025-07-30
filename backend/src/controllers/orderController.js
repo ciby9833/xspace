@@ -242,6 +242,100 @@ class OrderController {
     }
   }
 
+  // 🆕 多笔付款订单创建
+  async createOrderWithMultiPayment(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          error: '参数验证失败',
+          details: errors.array(),
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      console.log('🚀 开始创建多笔付款订单:', req.body);
+      
+      const result = await orderService.createOrderWithMultiPayment(req.body, req.user);
+      
+      res.json({
+        success: true,
+        message: '多笔付款订单创建成功',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('多笔付款订单创建错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      if (error.message.includes('门店') || error.message.includes('剧本') || error.message.includes('密室')) {
+        return res.status(404).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '多笔付款订单创建失败',
+        details: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 🆕 生成付款项建议
+  async generatePaymentItemsSuggestion(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          error: '参数验证失败',
+          details: errors.array(),
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      console.log('💡 生成付款项建议:', req.body);
+      
+      const result = await orderService.generatePaymentItemsSuggestion(req.body, req.user);
+      
+      res.json({
+        success: true,
+        message: '付款项建议生成成功',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('生成付款项建议错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '生成付款项建议失败',
+        details: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
   // 更新订单
   async update(req, res) {
     try {
@@ -1110,6 +1204,179 @@ class OrderController {
       res.status(500).json({
         success: false,
         error: '处理退款失败',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 🆕 获取可用的角色定价模板（用于订单折扣选择）
+  async getAvailableRolePricingTemplates(req, res) {
+    try {
+      const { storeId } = req.params;
+      const { item_type, item_id, date } = req.query;
+      
+      const result = await orderService.getAvailableRolePricingTemplates(
+        storeId, 
+        { item_type, item_id, date }, 
+        req.user
+      );
+      
+      res.json({
+        success: true,
+        message: '获取可用角色定价模板成功',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('获取可用角色定价模板错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '获取可用角色定价模板失败',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 🆕 获取可用的定价日历规则（用于订单折扣选择）
+  async getAvailablePricingCalendar(req, res) {
+    try {
+      const { storeId } = req.params;
+      const { date, item_type, item_id } = req.query;
+      
+      if (!date) {
+        return res.status(400).json({
+          success: false,
+          error: '请提供查询日期',
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      const result = await orderService.getAvailablePricingCalendar(
+        storeId, 
+        date, 
+        { item_type, item_id }, 
+        req.user
+      );
+      
+      res.json({
+        success: true,
+        message: '获取可用定价日历成功',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('获取可用定价日历错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '获取可用定价日历失败',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 🆕 计算订单折扣预览
+  async calculateOrderDiscount(req, res) {
+    try {
+      const { 
+        store_id, 
+        item_type, 
+        item_id, 
+        date, 
+        original_amount, 
+        player_count,
+        role_pricing_template_id,
+        pricing_calendar_id 
+      } = req.body;
+      
+      const result = await orderService.calculateOrderDiscount({
+        store_id,
+        item_type,
+        item_id,
+        date,
+        original_amount,
+        player_count,
+        role_pricing_template_id,
+        pricing_calendar_id
+      }, req.user);
+      
+      res.json({
+        success: true,
+        message: '计算订单折扣成功',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('计算订单折扣错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '计算订单折扣失败',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 🆕 获取订单支付信息汇总（包含玩家和支付记录）
+  async getOrderPaymentSummary(req, res) {
+    try {
+      const { orderId } = req.params;
+      
+      const result = await orderService.getOrderPaymentSummary(orderId, req.user);
+      
+      res.json({
+        success: true,
+        message: '获取订单支付信息汇总成功',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('获取订单支付信息汇总错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      if (error.message.includes('不存在')) {
+        return res.status(404).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '获取订单支付信息汇总失败',
         timestamp: new Date().toISOString()
       });
     }

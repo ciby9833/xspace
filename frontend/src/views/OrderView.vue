@@ -94,6 +94,32 @@
           </a-select>
         </a-form-item>
 
+        <!-- 🆕 多笔付款筛选 -->
+        <a-form-item label="付款模式">
+          <a-select 
+            v-model:value="filterForm.payment_mode" 
+            placeholder="付款模式" 
+            style="width: 120px"
+            allow-clear
+          >
+            <a-select-option value="single">单笔付款</a-select-option>
+            <a-select-option value="multi">多笔付款</a-select-option>
+          </a-select>
+        </a-form-item>
+
+        <!-- 🆕 折扣定价筛选 -->
+        <a-form-item label="折扣定价">
+          <a-select 
+            v-model:value="filterForm.has_role_discount" 
+            placeholder="折扣" 
+            style="width: 120px"
+            allow-clear
+          >
+            <a-select-option value="true">有折扣</a-select-option>
+            <a-select-option value="false">无折扣</a-select-option>
+          </a-select>
+        </a-form-item>
+
         <a-form-item label="客户信息">
           <a-input 
             v-model:value="filterForm.customer_search"
@@ -235,6 +261,28 @@
                 <span v-if="record.is_free" class="free-order">免费</span>
                 <span v-else class="amount">Rp {{ formatPrice(record.total_amount) }}</span>
               </div>
+              
+              <!-- 🆕 多笔付款信息显示 -->
+              <div v-if="record.enable_multi_payment" class="multi-payment-info">
+                <a-tag color="cyan" size="small">多笔付款</a-tag>
+                <div class="payment-progress">
+                  <span class="progress-text">{{ record.payment_split_count || 1 }}笔</span>
+                  <span v-if="record.payment_completion_percentage !== undefined" class="completion-rate">
+                    {{ record.payment_completion_percentage }}%
+                  </span>
+                </div>
+              </div>
+              
+              <!-- 🆕 折扣定价信息显示 -->
+              <div v-if="record.total_players_with_discount > 0" class="role-discount-info">
+                <a-tag color="orange" size="small">
+                  {{ record.total_players_with_discount }}人享折扣
+                </a-tag>
+                <div v-if="record.total_discount_percentage > 0" class="discount-rate">
+                  平均{{ record.total_discount_percentage }}%
+                </div>
+              </div>
+              
               <div v-if="!record.is_free && record.payment_status === 'DP'" class="payment-details">
                 <div class="prepaid-info">预付: Rp {{ formatPrice(record.prepaid_amount || 0) }}</div>
                 <div class="remaining-info">剩余: Rp {{ formatPrice(record.remaining_amount || 0) }}</div>
@@ -270,6 +318,17 @@
               >
                 查看
               </a-button>
+              
+              <!-- 🆕 支付明细按钮 -->
+              <a-button 
+                type="link" 
+                size="small" 
+                @click="viewPaymentDetails(record)"
+                v-if="record.enable_multi_payment"
+              >
+                支付明细
+              </a-button>
+              
               <a-button 
                 type="link" 
                 size="small" 
@@ -420,6 +479,84 @@
           <a-descriptions-item v-if="selectedOrder.payment_method" label="付款方式" :span="selectedOrder.payment_date ? 1 : 2">{{ selectedOrder.payment_method }}</a-descriptions-item>
           <a-descriptions-item v-if="selectedOrder.payment_date" label="付款日期">{{ formatDate(selectedOrder.payment_date) }}</a-descriptions-item>
           
+          <!-- 🆕 折扣信息 -->
+          <a-descriptions-item 
+            v-if="selectedOrder.selected_role_templates && selectedOrder.selected_role_templates.length > 0" 
+            label="折扣信息" 
+            :span="2"
+          >
+            <div class="role-templates-display">
+              <a-tag 
+                v-for="(template, index) in selectedOrder.selected_role_templates" 
+                :key="index"
+                color="blue"
+                class="role-template-tag"
+              >
+                {{ template.role_name }} x{{ template.player_count }} 
+                <span class="discount-info">{{ template.discount_info }}</span>
+              </a-tag>
+            </div>
+          </a-descriptions-item>
+          
+          <!-- 🆕 多笔付款统计信息 -->
+          <a-descriptions-item 
+            v-if="selectedOrder.enable_multi_payment" 
+            label="多笔付款统计" 
+            :span="2"
+          >
+            <div class="multi-payment-stats">
+              <a-row :gutter="16">
+                <a-col :span="6">
+                  <a-statistic title="付款笔数" :value="selectedOrder.payment_split_count || 1" />
+                </a-col>
+                <a-col :span="6">
+                  <a-statistic title="完成度" :value="selectedOrder.payment_completion_percentage || 0" suffix="%" />
+                </a-col>
+                <a-col :span="6">
+                  <a-statistic title="已收金额" :value="selectedOrder.total_paid_amount || 0" :formatter="(value) => `Rp ${formatPrice(value)}`" />
+                </a-col>
+                <a-col :span="6">
+                  <a-statistic title="待收金额" :value="selectedOrder.total_pending_amount || 0" :formatter="(value) => `Rp ${formatPrice(value)}`" />
+                </a-col>
+              </a-row>
+            </div>
+          </a-descriptions-item>
+          
+          <!-- 🆕 价格明细统计 -->
+          <a-descriptions-item 
+            v-if="selectedOrder.total_original_amount && selectedOrder.total_original_amount > 0" 
+            label="价格明细" 
+            :span="2"
+          >
+            <div class="price-breakdown">
+              <a-row :gutter="16">
+                <a-col :span="8">
+                  <div class="price-item">
+                    <span class="price-label">原价总计:</span>
+                    <span class="price-value">Rp {{ formatPrice(selectedOrder.total_original_amount) }}</span>
+                  </div>
+                </a-col>
+                <a-col :span="8" v-if="selectedOrder.total_discount_amount > 0">
+                  <div class="price-item discount">
+                    <span class="price-label">折扣总计:</span>
+                    <span class="price-value">-Rp {{ formatPrice(selectedOrder.total_discount_amount) }}</span>
+                  </div>
+                </a-col>
+                <a-col :span="8">
+                  <div class="price-item final">
+                    <span class="price-label">应收总计:</span>
+                    <span class="price-value">Rp {{ formatPrice(selectedOrder.total_final_amount || selectedOrder.total_amount) }}</span>
+                  </div>
+                </a-col>
+              </a-row>
+              <div v-if="selectedOrder.total_players_with_discount > 0 || selectedOrder.total_players_without_discount > 0" class="player-stats">
+                <a-tag color="orange">{{ selectedOrder.total_players_with_discount || 0 }}人享折扣</a-tag>
+                <a-tag color="blue">{{ selectedOrder.total_players_without_discount || 0 }}人标准价</a-tag>
+                <a-tag v-if="selectedOrder.total_discount_percentage > 0" color="green">平均折扣{{ selectedOrder.total_discount_percentage }}%</a-tag>
+              </div>
+            </div>
+          </a-descriptions-item>
+          
           <!-- 优惠信息 -->
           <template v-if="selectedOrder.promo_code || selectedOrder.promo_quantity || selectedOrder.promo_discount">
             <a-descriptions-item v-if="selectedOrder.promo_code" label="优惠码" :span="selectedOrder.promo_quantity ? 1 : 2">{{ selectedOrder.promo_code }}</a-descriptions-item>
@@ -511,6 +648,144 @@
         </div>
       </div>
     </a-modal>
+
+    <!-- 🆕 支付明细模态框 -->
+    <a-modal
+      v-model:open="paymentDetailsModalVisible"
+      title="支付明细"
+      width="1200px"
+      :footer="null"
+    >
+      <div v-if="paymentDetailsData.order" class="payment-details-container">
+        <!-- 订单基本信息 -->
+        <div class="payment-header">
+          <h3>订单信息</h3>
+          <a-descriptions :column="3" size="small" bordered>
+            <a-descriptions-item label="订单编号">{{ paymentDetailsData.order.id.substring(0, 8) }}</a-descriptions-item>
+            <a-descriptions-item label="客户姓名">{{ paymentDetailsData.order.customer_name }}</a-descriptions-item>
+            <a-descriptions-item label="玩家人数">{{ paymentDetailsData.order.player_count }}人</a-descriptions-item>
+            <a-descriptions-item label="订单日期">{{ formatDate(paymentDetailsData.order.order_date) }}</a-descriptions-item>
+            <a-descriptions-item label="时间段">{{ paymentDetailsData.order.start_time }} - {{ paymentDetailsData.order.end_time }}</a-descriptions-item>
+            <a-descriptions-item label="总金额">Rp {{ formatPrice(paymentDetailsData.order.total_amount) }}</a-descriptions-item>
+          </a-descriptions>
+        </div>
+
+        <!-- 玩家明细 -->
+        <div class="payment-section">
+          <h3>玩家明细</h3>
+          <a-table
+            :data-source="paymentDetailsData.players"
+            :columns="playerColumns"
+            :pagination="false"
+            size="small"
+            row-key="id"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'role_info'">
+                <div>
+                  <div class="role-name">{{ record.selected_role_name }}</div>
+                  <div v-if="record.discount_type !== 'none'" class="discount-info">
+                    <a-tag color="orange" size="small">
+                      {{ record.discount_type === 'percentage' ? `${record.discount_percentage}%折扣` : 
+                          record.discount_type === 'fixed' ? `减免Rp ${formatPrice(record.discount_fixed_amount)}` :
+                          record.discount_type === 'mixed' ? `混合折扣 ${record.discount_percentage}%` :
+                          '免费' }}
+                    </a-tag>
+                  </div>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'amount_info'">
+                <div class="amount-details">
+                  <div class="original-amount">原价: Rp {{ formatPrice(record.original_amount) }}</div>
+                  <div v-if="record.discount_amount > 0" class="discount-amount">折扣: -Rp {{ formatPrice(record.discount_amount) }}</div>
+                  <div class="final-amount">应付: Rp {{ formatPrice(record.final_amount) }}</div>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'payment_status'">
+                <a-tag :color="record.payment_status === 'paid' ? 'green' : record.payment_status === 'pending' ? 'orange' : 'red'">
+                  {{ record.payment_status === 'paid' ? '已付款' : record.payment_status === 'pending' ? '待付款' : '已取消' }}
+                </a-tag>
+              </template>
+            </template>
+          </a-table>
+        </div>
+
+        <!-- 支付记录 -->
+        <div class="payment-section">
+          <h3>支付记录</h3>
+          <a-table
+            :data-source="paymentDetailsData.payments"
+            :columns="paymentColumns"
+            :pagination="false"
+            size="small"
+            row-key="id"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'payment_info'">
+                <div>
+                  <div class="payer-name">{{ record.payer_name }}</div>
+                  <div class="payment-amount">Rp {{ formatPrice(record.payment_amount) }}</div>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'covers_info'">
+                <div>
+                  <div class="covers-count">覆盖 {{ record.covers_player_count }} 名玩家</div>
+                  <div class="covers-roles">
+                    <a-tag v-for="role in record.payment_for_roles" :key="role" size="small">{{ role }}</a-tag>
+                  </div>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'status'">
+                <a-tag :color="record.payment_status === 'confirmed' ? 'green' : record.payment_status === 'pending' ? 'orange' : 'red'">
+                  {{ record.payment_status === 'confirmed' ? '已确认' : record.payment_status === 'pending' ? '待确认' : '已取消' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'date'">
+                {{ formatDateTime(record.payment_date || record.created_at) }}
+              </template>
+            </template>
+          </a-table>
+        </div>
+
+        <!-- 汇总信息 -->
+        <div v-if="paymentDetailsData.summary" class="payment-summary">
+          <h3>汇总信息</h3>
+          <a-row :gutter="16">
+            <a-col :span="6">
+              <a-statistic
+                title="原价总计"
+                :value="paymentDetailsData.summary.total_original_amount || 0"
+                :formatter="(value) => `Rp ${formatPrice(value)}`"
+              />
+            </a-col>
+            <a-col :span="6">
+              <a-statistic
+                title="折扣总计"
+                :value="paymentDetailsData.summary.total_discount_amount || 0"
+                :formatter="(value) => `-Rp ${formatPrice(value)}`"
+                :value-style="{ color: '#f50' }"
+              />
+            </a-col>
+            <a-col :span="6">
+              <a-statistic
+                title="应收总计"
+                :value="paymentDetailsData.summary.total_final_amount || 0"
+                :formatter="(value) => `Rp ${formatPrice(value)}`"
+                :value-style="{ color: '#52c41a' }"
+              />
+            </a-col>
+            <a-col :span="6">
+              <a-statistic
+                title="已收金额"
+                :value="paymentDetailsData.summary.total_paid_amount || 0"
+                :formatter="(value) => `Rp ${formatPrice(value)}`"
+                :value-style="{ color: '#1890ff' }"
+              />
+            </a-col>
+          </a-row>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -552,7 +827,10 @@ const filterForm = reactive({
   order_type: null,
   status: null,
   payment_status: null,
-  customer_search: null
+  customer_search: null,
+  // 🆕 新增筛选字段
+  payment_mode: null, // single/multi
+  has_role_discount: null // true/false
 })
 
 // 分页参数
@@ -565,10 +843,18 @@ const pagination = reactive({
 // 模态框显示状态
 const detailModalVisible = ref(false)
 const formModalVisible = ref(false)
+const paymentDetailsModalVisible = ref(false) // 🆕 支付明细模态框
 
 // 表单数据
 const formData = ref({})
 const isEdit = ref(false)
+
+// 🆕 支付明细数据
+const paymentDetailsData = ref({
+  order: null,
+  players: [],
+  payments: []
+})
 
 // 表格列定义
 const columns = [
@@ -623,6 +909,74 @@ const columns = [
     key: 'action',
     width: 180,
     fixed: 'right'
+  }
+]
+
+// 🆕 玩家明细表格列定义
+const playerColumns = [
+  {
+    title: '玩家序号',
+    dataIndex: 'player_order',
+    width: 80
+  },
+  {
+    title: '玩家姓名',
+    dataIndex: 'player_name',
+    width: 120
+  },
+  {
+    title: '角色信息',
+    key: 'role_info',
+    width: 150
+  },
+  {
+    title: '金额详情',
+    key: 'amount_info',
+    width: 200
+  },
+  {
+    title: '支付状态',
+    key: 'payment_status',
+    width: 100
+  },
+  {
+    title: '备注',
+    dataIndex: 'notes',
+    ellipsis: true
+  }
+]
+
+// 🆕 支付记录表格列定义
+const paymentColumns = [
+  {
+    title: '支付信息',
+    key: 'payment_info',
+    width: 180
+  },
+  {
+    title: '支付方式',
+    dataIndex: 'payment_method',
+    width: 120
+  },
+  {
+    title: '覆盖信息',
+    key: 'covers_info',
+    width: 200
+  },
+  {
+    title: '状态',
+    key: 'status',
+    width: 100
+  },
+  {
+    title: '支付时间',
+    key: 'date',
+    width: 150
+  },
+  {
+    title: '备注',
+    dataIndex: 'notes',
+    ellipsis: true
   }
 ]
 
@@ -686,6 +1040,23 @@ const buildFilterParams = () => {
       params.customer_phone = filterForm.customer_search
     } else {
       params.customer_name = filterForm.customer_search
+    }
+  }
+  
+  // 🆕 新增筛选参数
+  if (filterForm.payment_mode) {
+    if (filterForm.payment_mode === 'multi') {
+      params.enable_multi_payment = true
+    } else if (filterForm.payment_mode === 'single') {
+      params.enable_multi_payment = false
+    }
+  }
+  
+  if (filterForm.has_role_discount) {
+    if (filterForm.has_role_discount === 'true') {
+      params.has_role_discount = true
+    } else if (filterForm.has_role_discount === 'false') {
+      params.has_role_discount = false
     }
   }
   
@@ -763,16 +1134,73 @@ const exportOrders = async () => {
 }
 
 // 查看订单
-const viewOrder = (record) => {
-  selectedOrder.value = record
-  detailModalVisible.value = true
+const viewOrder = async (record) => {
+  try {
+    loading.value = true
+    
+    // 获取订单支付汇总信息以获取准确的价格明细
+    const response = await orderAPI.getOrderPaymentSummary(record.id)
+    
+    // 合并订单基本信息和准确的价格明细统计
+    const playerSummary = response.data?.player_summary || {}
+    selectedOrder.value = {
+      ...record,
+      // 覆盖价格明细相关字段，确保显示准确的计算结果
+      total_original_amount: playerSummary.total_original_amount || record.total_original_amount,
+      total_discount_amount: playerSummary.total_discount_amount || record.total_discount_amount,
+      total_final_amount: playerSummary.total_player_amount || record.total_final_amount,
+      total_players_with_discount: playerSummary.players_with_discount || record.total_players_with_discount,
+      total_players_without_discount: playerSummary.players_without_discount || record.total_players_without_discount,
+      total_discount_percentage: playerSummary.discount_percentage ? 
+        Math.round(playerSummary.discount_percentage * 100) / 100 : record.total_discount_percentage
+    }
+    
+    detailModalVisible.value = true
+  } catch (error) {
+    console.error('获取订单详情失败:', error)
+    // 降级处理：使用原始数据
+    selectedOrder.value = record
+    detailModalVisible.value = true
+    message.warning('部分详情信息可能不准确，请稍后重试')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 🆕 查看支付明细
+const viewPaymentDetails = async (record) => {
+  try {
+    loading.value = true
+    
+    // 获取订单支付汇总信息
+    const response = await orderAPI.getOrderPaymentSummary(record.id)
+    
+    paymentDetailsData.value = {
+      order: record,
+      players: response.data.players || [],
+      payments: response.data.payments || [],
+      summary: response.data.summary || {}
+    }
+    
+    paymentDetailsModalVisible.value = true
+  } catch (error) {
+    console.error('获取支付明细失败:', error)
+    message.error('获取支付明细失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 // 编辑订单
-const editOrder = (record) => {
-  isEdit.value = true
-  formData.value = { ...record }
-  formModalVisible.value = true
+const editOrder = async (record) => {
+  try {
+    isEdit.value = true
+    formData.value = { ...record }
+    formModalVisible.value = true
+  } catch (error) {
+    console.error('编辑订单失败:', error)
+    message.error('编辑订单失败')
+  }
 }
 
 // 删除订单
@@ -1226,6 +1654,103 @@ const nextProofImage = () => {
   color: #faad14;
 }
 
+/* 🆕 多笔付款信息样式 */
+.multi-payment-info {
+  margin: 4px 0;
+  font-size: 11px;
+}
+
+.payment-progress {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.progress-text {
+  color: #1890ff;
+  font-weight: 500;
+}
+
+.completion-rate {
+  color: #52c41a;
+  font-weight: 500;
+}
+
+/* 🆕 折扣定价信息样式 */
+.role-discount-info {
+  margin: 4px 0;
+  font-size: 11px;
+}
+
+.discount-rate {
+  color: #fa8c16;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* 🆕 多笔付款统计样式 */
+.multi-payment-stats {
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+/* 🆕 价格明细样式 */
+.price-breakdown {
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.price-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.price-item:last-child {
+  margin-bottom: 0;
+}
+
+.price-item.discount .price-value {
+  color: #f50;
+  font-weight: 600;
+}
+
+.price-item.final {
+  border: 2px solid #52c41a;
+}
+
+.price-item.final .price-value {
+  color: #52c41a;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.price-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.price-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.player-stats {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e8e8e8;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .action-buttons {
   display: flex;
   gap: 8px;
@@ -1362,6 +1887,23 @@ const nextProofImage = () => {
   text-overflow: ellipsis;
 }
 
+/* 🆕 折扣显示样式 */
+.role-templates-display {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.role-template-tag {
+  margin-bottom: 4px;
+}
+
+.role-template-tag .discount-info {
+  margin-left: 4px;
+  font-weight: bold;
+  color: #52c41a;
+}
+
 .npc-roles-text {
   display: inline-block;
   max-width: 100%;
@@ -1452,6 +1994,89 @@ const nextProofImage = () => {
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
 
+/* 🆕 支付明细模态框样式 */
+.payment-details-container {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.payment-header {
+  margin-bottom: 24px;
+}
+
+.payment-section {
+  margin-bottom: 24px;
+}
+
+.payment-section h3 {
+  margin-bottom: 16px;
+  color: #333;
+  border-bottom: 1px solid #e8e8e8;
+  padding-bottom: 8px;
+}
+
+.payment-summary {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #e8e8e8;
+}
+
+.payment-summary h3 {
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.role-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.discount-info {
+  margin-top: 4px;
+}
+
+.amount-details {
+  font-size: 12px;
+}
+
+.original-amount {
+  color: #666;
+  margin-bottom: 2px;
+}
+
+.discount-amount {
+  color: #f50;
+  margin-bottom: 2px;
+}
+
+.final-amount {
+  color: #52c41a;
+  font-weight: 600;
+}
+
+.payer-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.payment-amount {
+  color: #1890ff;
+  font-weight: 600;
+}
+
+.covers-count {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.covers-roles {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .filter-card .ant-form {
@@ -1460,6 +2085,14 @@ const nextProofImage = () => {
   
   .filter-card .ant-form-item {
     margin-bottom: 16px;
+  }
+
+  .payment-details-container {
+    padding: 8px;
+  }
+  
+  .payment-section h3 {
+    font-size: 16px;
   }
 }
 </style> 

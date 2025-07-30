@@ -330,6 +330,193 @@
         </div>
       </div>
 
+      <!-- 🆕 角色折扣选择卡片 -->
+      <div v-if="formData.free_pay === 'Pay'" class="form-card">
+        <div class="compact-header">
+          <TagOutlined class="header-icon" />
+          <span class="header-title">角色折扣选择</span>
+          <span class="header-subtitle">选择角色可享受对应折扣优惠</span>
+        </div>
+        
+        <div class="role-discount-section">
+          <!-- 加载状态 -->
+          <div v-if="loadingRolePricing" class="loading-state">
+            <a-spin size="small" />
+            <span>加载角色折扣信息...</span>
+          </div>
+          
+          <!-- 无折扣可用 -->
+          <div v-else-if="!availableRoleTemplates.length" class="no-discounts">
+            <a-alert 
+              message="暂无可用角色折扣" 
+              description="当前门店暂未设置角色折扣优惠，将按标准价格计费" 
+              type="info" 
+              show-icon 
+            />
+          </div>
+          
+          <!-- 角色折扣选择列表 -->
+          <div v-else class="role-discount-list">
+            <div class="discount-summary" :class="{ 'exceeded': getTotalSelectedPlayers() > (formData.player_count || 0) }">
+              <span class="summary-text">
+                可用角色: {{ availableRoleTemplates.length }} 个 | 
+                已选人数: {{ getTotalSelectedPlayers() }} / {{ formData.player_count || 0 }} 人
+                <span v-if="getTotalSelectedPlayers() > (formData.player_count || 0)" class="exceeded-warning">
+                  ⚠️ 超出限制
+                </span>
+              </span>
+            </div>
+            
+            <div class="role-items">
+              <div 
+                v-for="template in availableRoleTemplates" 
+                :key="template.id"
+                class="role-discount-item"
+              >
+                <div class="role-header">
+                  <div class="role-info">
+                    <h4 class="role-name">{{ template.role_name }}</h4>
+                    <span class="role-type" :class="template.template_type === '公司通用' ? 'company' : 'store'">
+                      {{ template.template_type }}
+                    </span>
+                  </div>
+                  <div class="role-selection">
+                    <label>选择人数:</label>
+                    <a-input-number 
+                      v-model:value="selectedRoles[template.id]"
+                      :min="0"
+                      :max="getMaxSelectableForRole(template.id)"
+                      size="small"
+                      @change="(value) => handleRoleCountChange(template.id, value)"
+                      :placeholder="`最多${getMaxSelectableForRole(template.id)}人`"
+                    />
+                    <small v-if="getMaxSelectableForRole(template.id) === 0" class="no-slots-hint">
+                      暂无可选名额
+                    </small>
+                  </div>
+                </div>
+                
+                <div class="role-description" v-if="template.role_description">
+                  {{ template.role_description }}
+                </div>
+                
+                <div class="price-info">
+                  <div class="original-price">
+                    原价: Rp {{ formatPrice(formData.unit_price || 0) }}
+                  </div>
+                  <div class="discounted-price">
+                    折后价: Rp {{ formatPrice(calculateDiscountedPrice(template, formData.unit_price || 0)) }}
+                    <span class="discount-badge">{{ template.discount_display }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 折扣计算预览 -->
+            <div class="discount-preview">
+              <div class="preview-header">
+                <h4>价格计算预览</h4>
+                <div class="preview-actions">
+                  <a-button 
+                    type="primary" 
+                    size="small"
+                    @click="generateSplitPayment"
+                    :loading="paymentSplitLoading"
+                    class="split-payment-btn"
+                  >
+                    <CreditCardOutlined />
+                    按人数拆分付款
+                  </a-button>
+                  <a-button 
+                    v-if="showSplitPayment"
+                    size="small"
+                    @click="clearSplitPayment"
+                    class="clear-split-btn"
+                  >
+                    清除拆分
+                  </a-button>
+                </div>
+              </div>
+              <div class="price-breakdown">
+                <div 
+                  v-for="item in getPriceBreakdown()" 
+                  :key="item.key"
+                  class="breakdown-item"
+                >
+                  <span class="item-description">{{ item.description }}</span>
+                  <span class="item-amount">Rp {{ formatPrice(item.amount) }}</span>
+                </div>
+                <div class="breakdown-total">
+                  <span class="total-label">折扣后总计:</span>
+                  <span class="total-amount">Rp {{ formatPrice(getDiscountedTotal()) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 🆕 拆分付款显示区域 -->
+            <div v-if="showSplitPayment" class="split-payment-display">
+              <!-- 统计摘要 -->
+              <div v-if="splitSummary" class="split-summary-compact">
+                <div class="summary-title">
+                  <h4>拆分付款摘要</h4>
+                  <span class="summary-count">{{ splitSummary.total_items }}笔</span>
+                </div>
+                <div class="summary-stats-compact">
+                  <div class="stat-compact">
+                    <span class="stat-label">享受折扣</span>
+                    <span class="stat-value">{{ splitSummary.players_with_discount }}人</span>
+                  </div>
+                  <div class="stat-compact">
+                    <span class="stat-label">标准价格</span>
+                    <span class="stat-value">{{ splitSummary.players_without_discount }}人</span>
+                  </div>
+                  <div class="stat-compact">
+                    <span class="stat-label">节省金额</span>
+                    <span class="stat-value discount">Rp {{ formatPrice(splitSummary.total_discount_amount) }}</span>
+                  </div>
+                  <div class="stat-compact total">
+                    <span class="stat-label">实付总额</span>
+                    <span class="stat-value">Rp {{ formatPrice(splitSummary.total_amount) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 付款项列表 -->
+              <div class="split-items-compact">
+                <div class="items-grid">
+                  <div 
+                    v-for="item in splitPaymentItems" 
+                    :key="item.id"
+                    class="split-item-compact"
+                    :class="{ 'has-discount': item.discount_amount > 0 }"
+                  >
+                    <div class="item-header-compact">
+                      <div class="item-player-badge">{{ item.player_index }}</div>
+                      <div class="item-name-compact">{{ item.name }}</div>
+                      <div class="item-type-compact" :class="item.type">
+                        {{ item.type === 'role_discount' ? '折扣' : '标准' }}
+                      </div>
+                    </div>
+                    
+                    <div class="item-pricing-compact">
+                      <div class="price-line">
+                        <span class="original-price-compact">Rp {{ formatPrice(item.original_amount) }}</span>
+                        <span v-if="item.discount_amount > 0" class="discount-compact">
+                          -{{ item.discount_percentage }}%
+                        </span>
+                      </div>
+                      <div class="final-price-compact">
+                        Rp {{ formatPrice(item.amount) }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 预订类型和促销卡片 -->
       <div class="form-card">
         <div class="compact-header">
@@ -570,6 +757,8 @@
     >
       <img :src="previewImageUrl" style="width: 100%" />
     </a-modal>
+
+
   </div>
 </template>
 
@@ -598,8 +787,9 @@ import {
   ExclamationCircleOutlined,
   HomeOutlined
 } from '@ant-design/icons-vue'
-import { orderAPI } from '@/api/order'
+import { orderAPI, generatePaymentItemsSuggestion } from '@/api/order'
 import { getUsersByStore } from '@/api/user'
+import { rolePricingTemplateAPI } from '@/api/multiPayment'
 
 // Props
 const props = defineProps({
@@ -620,6 +810,17 @@ const gameHosts = ref([])
 
 // 🆕 密室NPC角色相关数据
 const escapeRoomNpcRoles = ref([])
+
+// 🆕 角色定价相关数据
+const availableRoleTemplates = ref([])
+const loadingRolePricing = ref(false)
+const selectedRoles = ref({})
+
+// 🆕 拆分付款相关数据
+const paymentSplitLoading = ref(false)
+const splitPaymentItems = ref([])
+const splitSummary = ref(null)
+const showSplitPayment = ref(false)
 
 // 相机相关
 const cameraVisible = ref(false)
@@ -666,12 +867,47 @@ const formData = reactive({
 onMounted(() => {
   initForm()
   loadGameHosts()
+  loadRolePricingTemplates()
 })
 
-// 🆕 监听人数变化，自动重新计算总金额
-watch(() => formData.player_count, () => {
+// 🆕 监听人数变化，自动重新计算总金额并验证角色选择
+watch(() => formData.player_count, (newPlayerCount, oldPlayerCount) => {
   if (formData.free_pay === 'Pay') {
-    calculateTotalAmount()
+    // 如果游戏人数减少，需要检查并调整角色选择
+    if (newPlayerCount < oldPlayerCount) {
+      const totalSelected = getTotalSelectedPlayers();
+      if (totalSelected > newPlayerCount) {
+        // 按比例减少各角色人数
+        const ratio = newPlayerCount / totalSelected;
+        let adjustedTotal = 0;
+        
+        // 先按比例计算，然后向下取整
+        for (const templateId in selectedRoles.value) {
+          if (selectedRoles.value[templateId] > 0) {
+            const newCount = Math.floor(selectedRoles.value[templateId] * ratio);
+            selectedRoles.value[templateId] = newCount;
+            adjustedTotal += newCount;
+          }
+        }
+        
+        // 如果调整后的总数还是超过限制，继续减少
+        if (adjustedTotal > newPlayerCount) {
+          const overCount = adjustedTotal - newPlayerCount;
+          const roleIds = Object.keys(selectedRoles.value).filter(id => selectedRoles.value[id] > 0);
+          
+          for (let i = 0; i < overCount && i < roleIds.length; i++) {
+            const roleId = roleIds[i];
+            if (selectedRoles.value[roleId] > 0) {
+              selectedRoles.value[roleId]--;
+            }
+          }
+        }
+        
+        message.info(`游戏人数减少，已自动调整角色选择人数`);
+      }
+    }
+    
+    calculateTotalAmount();
   }
 })
 
@@ -807,9 +1043,19 @@ const filterNpcOption = (input, option) => {
 
 // 🆕 自动计算总金额
 const calculateTotalAmount = () => {
-  const playerCount = formData.player_count || 0
-  const unitPrice = formData.unit_price || 0
-  formData.total_amount = playerCount * unitPrice
+  if (formData.free_pay === 'Pay') {
+    // 如果有角色选择，使用折扣后价格
+    if (getTotalSelectedPlayers() > 0) {
+      formData.total_amount = getDiscountedTotal()
+    } else {
+      // 否则使用标准价格
+      const playerCount = formData.player_count || 0
+      const unitPrice = formData.unit_price || 0
+      formData.total_amount = playerCount * unitPrice
+    }
+  } else {
+    formData.total_amount = 0
+  }
   
   // 如果是定金支付，重新计算剩余金额
   if (formData.payment_status === 'DP') {
@@ -864,6 +1110,314 @@ const formatPrice = (price) => {
   if (!price) return '0'
   return new Intl.NumberFormat('id-ID').format(price)
 }
+
+// 🆕 计算折扣后价格
+const calculateDiscountedPrice = (template, originalPrice) => {
+  if (!template || !originalPrice) return originalPrice;
+  
+  let discountAmount = 0;
+  if (template.discount_type === 'percentage') {
+    discountAmount = originalPrice * (template.discount_value / 100);
+  } else if (template.discount_type === 'fixed') {
+    discountAmount = Math.min(template.discount_value, originalPrice);
+  }
+  
+  return originalPrice - discountAmount;
+};
+
+// 🆕 获取总已选择人数
+const getTotalSelectedPlayers = () => {
+  return Object.values(selectedRoles.value).reduce((sum, count) => sum + (count || 0), 0);
+};
+
+// 🆕 获取折扣后总金额
+const getDiscountedTotal = () => {
+  const unitPrice = formData.unit_price || 0;
+  const playerCount = formData.player_count || 0;
+  let total = 0;
+  
+  // 计算有折扣的金额
+  for (const templateId in selectedRoles.value) {
+    const count = selectedRoles.value[templateId] || 0;
+    if (count > 0) {
+      const template = availableRoleTemplates.value.find(r => r.id == templateId);
+      if (template) {
+        const discountedPrice = calculateDiscountedPrice(template, unitPrice);
+        total += discountedPrice * count;
+      }
+    }
+  }
+  
+  // 计算没有折扣的人数金额
+  const totalSelectedPlayers = getTotalSelectedPlayers();
+  const remainingPlayers = Math.max(0, playerCount - totalSelectedPlayers);
+  total += remainingPlayers * unitPrice;
+  
+  return total;
+};
+
+// 🆕 获取价格明细
+const getPriceBreakdown = () => {
+  const breakdown = [];
+  const unitPrice = formData.unit_price || 0;
+  const playerCount = formData.player_count || 0;
+  
+  // 添加折扣项目
+  for (const templateId in selectedRoles.value) {
+    const count = selectedRoles.value[templateId] || 0;
+    if (count > 0) {
+      const template = availableRoleTemplates.value.find(r => r.id == templateId);
+      if (template) {
+        const discountedPrice = calculateDiscountedPrice(template, unitPrice);
+        breakdown.push({
+          key: `role_${templateId}`,
+          description: `${template.role_name} (${count}人)`,
+          amount: discountedPrice * count
+        });
+      }
+    }
+  }
+  
+  // 添加标准价格项目
+  const totalSelectedPlayers = getTotalSelectedPlayers();
+  const remainingPlayers = Math.max(0, playerCount - totalSelectedPlayers);
+  if (remainingPlayers > 0) {
+    breakdown.push({
+      key: 'standard',
+      description: `标准价格 (${remainingPlayers}人)`,
+      amount: unitPrice * remainingPlayers
+    });
+  }
+  
+  return breakdown;
+};
+
+// 🆕 计算每个角色的最大可选人数
+const getMaxSelectableForRole = (templateId) => {
+  const maxPlayers = formData.player_count || 0;
+  const currentRoleCount = selectedRoles.value[templateId] || 0;
+  
+  // 计算其他角色已选择的总人数
+  const otherRolesCount = Object.keys(selectedRoles.value)
+    .filter(id => id !== templateId.toString())
+    .reduce((sum, id) => sum + (selectedRoles.value[id] || 0), 0);
+  
+  // 最大可选人数 = 游戏总人数 - 其他角色已选人数
+  const maxSelectable = Math.max(0, maxPlayers - otherRolesCount);
+  
+  return maxSelectable;
+};
+
+// 🆕 处理角色人数输入变化
+const handleRoleCountChange = (templateId, newValue) => {
+  const maxAllowed = getMaxSelectableForRole(templateId);
+  
+  // 如果输入值超过允许的最大值，自动调整到最大值
+  if (newValue > maxAllowed) {
+    selectedRoles.value[templateId] = maxAllowed;
+    message.warning(`该角色最多只能选择 ${maxAllowed} 人`);
+  } else if (newValue < 0) {
+    selectedRoles.value[templateId] = 0;
+  } else {
+    selectedRoles.value[templateId] = newValue;
+  }
+  
+  handleRoleSelectionChange();
+};
+
+// 🆕 处理角色选择变化
+const handleRoleSelectionChange = () => {
+  // 验证总人数不超过游戏人数
+  const totalSelected = getTotalSelectedPlayers();
+  const maxPlayers = formData.player_count || 0;
+  
+  if (totalSelected > maxPlayers) {
+    message.warning(`选择的角色人数 (${totalSelected}) 超过了游戏总人数 (${maxPlayers})，请调整选择`);
+  }
+  
+  // 重新计算总金额
+  formData.total_amount = getDiscountedTotal();
+  calculateRemainingAmount();
+};
+
+// 🆕 加载角色定价模板
+const loadRolePricingTemplates = async () => {
+  if (!props.bookingData.store_id) {
+    console.warn('⚠️ 门店ID为空，无法加载角色定价模板');
+    return;
+  }
+  
+  loadingRolePricing.value = true;
+  try {
+    console.log('🔄 开始加载角色定价模板，门店ID:', props.bookingData.store_id);
+    console.log('📋 预订数据:', props.bookingData);
+    
+    const response = await rolePricingTemplateAPI.getTemplatesForOrder(props.bookingData.store_id);
+    console.log('📡 API响应:', response);
+    
+    if (response && response.data && response.data.length > 0) {
+      availableRoleTemplates.value = response.data;
+      console.log(`✅ 加载角色定价模板成功: ${response.data.length} 个可用模板`);
+      console.table(response.data.map(t => ({
+        id: t.id,
+        role_name: t.role_name,
+        discount_type: t.discount_type,
+        discount_value: t.discount_value,
+        discount_display: t.discount_display,
+        template_type: t.template_type
+      })));
+      
+      // 初始化已选择人数为0
+      selectedRoles.value = {};
+      for (const template of response.data) {
+        selectedRoles.value[template.id] = 0;
+      }
+      
+      if (response.meta) {
+        console.log('📊 模板统计信息:', {
+          total: response.meta.total,
+          company_wide_count: response.meta.company_wide_count,
+          store_specific_count: response.meta.store_specific_count
+        });
+      }
+    } else {
+      availableRoleTemplates.value = [];
+      selectedRoles.value = {};
+      console.log('ℹ️ 当前门店暂无可用的角色定价模板');
+    }
+  } catch (error) {
+    console.error('❌ 加载角色定价模板失败:', error);
+    console.error('错误详情:', error.response?.data || error.message);
+    
+    // 更具体的错误提示
+    if (error.response?.status === 403) {
+      message.error('没有权限访问该门店的角色定价模板');
+    } else if (error.response?.status === 404) {
+      message.error('角色定价模板服务不可用');
+    } else {
+      message.error(`加载角色定价模板失败: ${error.response?.data?.error || error.message}`);
+    }
+    
+    availableRoleTemplates.value = [];
+    selectedRoles.value = {};
+  } finally {
+    loadingRolePricing.value = false;
+  }
+};
+
+// 🆕 生成拆分付款建议
+const generateSplitPayment = async () => {
+  if (!formData.player_count || formData.player_count <= 0) {
+    message.warning('请先填写游戏人数');
+    return;
+  }
+
+  if (!formData.unit_price || formData.unit_price <= 0) {
+    message.warning('请先确认单价');
+    return;
+  }
+
+  paymentSplitLoading.value = true;
+  
+  try {
+    console.log('🚀 开始生成拆分付款建议...');
+    
+    // 构建请求数据，包含所有必要字段
+    const requestData = {
+      // 基础订单信息
+      unit_price: formData.unit_price,
+      player_count: formData.player_count,
+      customer_name: formData.customer_name,
+      customer_phone: formData.customer_phone,
+      
+      // 项目信息
+      item_type: props.bookingData.item_type,
+      item_id: props.bookingData.item_id,
+      item_name: props.bookingData.item_name,
+      store_id: props.bookingData.store_id,
+      room_id: props.bookingData.room_id,
+      
+      // 时间信息
+      order_date: props.bookingData.date,
+      start_time: props.bookingData.start_time,
+      end_time: props.bookingData.end_time,
+      
+      // 游戏信息
+      game_host_id: formData.game_host_id,
+      pic_id: formData.pic_id,
+      booking_type: formData.booking_type,
+      language: 'IND', // 默认语言
+      
+      // 支付信息
+      free_pay: formData.free_pay,
+      payment_status: formData.payment_status,
+      payment_method: formData.payment_method,
+      prepaid_amount: formData.prepaid_amount,
+      remaining_amount: formData.remaining_amount,
+      
+      // 🆕 角色折扣数据
+      selected_role_templates: Object.keys(selectedRoles.value)
+        .filter(templateId => selectedRoles.value[templateId] > 0)
+        .map(templateId => ({
+          template_id: templateId,
+          player_count: selectedRoles.value[templateId],
+          role_name: availableRoleTemplates.value.find(t => t.id == templateId)?.role_name || '未知角色'
+        })),
+      
+      // 其他字段
+      is_group_booking: formData.is_group_booking,
+      include_cctv: formData.include_cctv,
+      include_photos: formData.include_photos,
+      escape_room_npc_roles: props.bookingData.item_type === 'escape_room' ? formData.escape_room_npc_roles : null,
+      promo_quantity: formData.promo_quantity,
+      notes: formData.notes,
+      status: formData.status
+    };
+    
+    console.log('📤 拆分付款请求数据:', requestData);
+    
+    const response = await generatePaymentItemsSuggestion(requestData);
+    console.log('📡 拆分付款响应:', response);
+    
+    if (response && response.data) {
+      splitPaymentItems.value = response.data.items || [];
+      splitSummary.value = response.data.summary || null;
+      showSplitPayment.value = true;
+      
+      message.success(`成功生成 ${splitPaymentItems.value.length} 个付款项`);
+      
+      console.log('✅ 拆分付款生成成功:', {
+        总付款项: splitPaymentItems.value.length,
+        享受折扣人数: splitSummary.value?.players_with_discount || 0,
+        标准价格人数: splitSummary.value?.players_without_discount || 0,
+        总节省金额: splitSummary.value?.total_savings || 0
+      });
+    } else {
+      message.error('拆分付款数据格式错误');
+    }
+    
+  } catch (error) {
+    console.error('❌ 生成拆分付款失败:', error);
+    console.error('错误详情:', error.response?.data || error.message);
+    
+    if (error.response?.status === 403) {
+      message.error('没有权限生成拆分付款');
+    } else if (error.response?.status === 400) {
+      message.error(`请求参数错误: ${error.response?.data?.message || '请检查订单信息'}`);
+    } else {
+      message.error(`生成拆分付款失败: ${error.response?.data?.message || error.message}`);
+    }
+  } finally {
+    paymentSplitLoading.value = false;
+  }
+};
+
+// 🆕 清除拆分付款显示
+const clearSplitPayment = () => {
+  showSplitPayment.value = false;
+  splitPaymentItems.value = [];
+  splitSummary.value = null;
+};
 
 // 相机功能
 const openCamera = async () => {
@@ -1022,6 +1576,14 @@ const validateForm = () => {
     return false
   }
   
+  // 🆕 验证角色人数总和不能超过游戏人数
+  const totalSelectedRoles = getTotalSelectedPlayers();
+  const maxPlayers = formData.player_count || 0;
+  if (totalSelectedRoles > maxPlayers) {
+    message.error(`所选角色人数总和 (${totalSelectedRoles}) 不能超过游戏人数 (${maxPlayers})，请调整角色选择`);
+    return false;
+  }
+  
   return true
 }
 
@@ -1093,6 +1655,14 @@ const handleSubmit = async () => {
       original_price: formData.unit_price, // 原价等于单价
       prepaid_amount: formData.prepaid_amount,
       remaining_amount: formData.remaining_amount,
+      
+      // 🆕 角色折扣数据
+      selected_role_templates: Object.keys(selectedRoles.value)
+        .filter(templateId => selectedRoles.value[templateId] > 0)
+        .map(templateId => ({
+          template_id: templateId,
+          player_count: selectedRoles.value[templateId]
+        })),
       
       // 状态
       status: formData.status
@@ -1378,7 +1948,461 @@ const handleCancel = () => {
   font-style: italic;
 }
 
+/* 🆕 角色折扣选择样式 */
+.role-discount-section {
+  padding: 16px;
+}
 
+.loading-state {
+  text-align: center;
+  padding: 30px 0;
+  color: #999;
+}
+
+.no-discounts {
+  margin-top: 16px;
+}
+
+.role-discount-list {
+  margin-top: 16px;
+}
+
+.discount-summary {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f0f2f5;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.discount-summary.exceeded {
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  color: #a8071a;
+}
+
+.exceeded-warning {
+  font-weight: 600;
+  color: #ff4d4f;
+  margin-left: 8px;
+  animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.5; }
+}
+
+.role-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.role-discount-item {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 16px;
+  background: white;
+  transition: border-color 0.3s ease;
+}
+
+.role-discount-item:hover {
+  border-color: #1890ff;
+}
+
+.role-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.role-info {
+  flex: 1;
+}
+
+.role-name {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.role-type {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.role-type.company {
+  background: #e6f7ff;
+  color: #0050b3;
+  border: 1px solid #91caff;
+}
+
+.role-type.store {
+  background: #f6ffed;
+  color: #135200;
+  border: 1px solid #95de64;
+}
+
+.role-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-selection label {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+}
+
+.role-selection :deep(.ant-input-number) {
+  width: 80px;
+}
+
+.no-slots-hint {
+  font-size: 11px;
+  color: #ff4d4f;
+  font-style: italic;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.role-description {
+  font-size: 13px;
+  color: #8c8c8c;
+  line-height: 1.4;
+  margin-bottom: 12px;
+  font-style: italic;
+}
+
+.price-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.original-price {
+  font-size: 13px;
+  color: #999;
+  text-decoration: line-through;
+}
+
+.discounted-price {
+  font-size: 14px;
+  font-weight: 600;
+  color: #52c41a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.discount-badge {
+  background: #52c41a;
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.discount-preview {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 1px solid #e8e8e8;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.preview-header h4 {
+  margin: 0;
+  font-size: 15px;
+  color: #333;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.split-payment-btn {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  border: none;
+  font-weight: 600;
+  font-size: 12px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clear-split-btn {
+  background: #ff4d4f;
+  color: white;
+  border: none;
+  font-weight: 600;
+  font-size: 12px;
+  height: 28px;
+}
+
+.price-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #666;
+}
+
+.breakdown-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid #e8e8e8;
+  margin-top: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.total-amount {
+  font-size: 16px;
+  color: #52c41a;
+}
+
+/* 🆕 拆分付款紧凑显示样式 */
+.split-payment-display {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.split-summary-compact {
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+  border: 1px solid #91caff;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.summary-title h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #0050b3;
+  font-weight: 600;
+}
+
+.summary-count {
+  font-size: 12px;
+  background: #1890ff;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.summary-stats-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.stat-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.stat-compact.total {
+  background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
+  border: 1px solid #b7eb8f;
+}
+
+.stat-compact .stat-label {
+  font-size: 10px;
+  color: #666;
+  font-weight: 500;
+}
+
+.stat-compact .stat-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #333;
+}
+
+.stat-compact .stat-value.discount {
+  color: #f5222d;
+}
+
+.stat-compact.total .stat-value {
+  color: #52c41a;
+  font-size: 13px;
+}
+
+.split-items-compact {
+  margin-top: 12px;
+}
+
+.items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.split-item-compact {
+  background: white;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  padding: 8px;
+  transition: all 0.2s ease;
+}
+
+.split-item-compact:hover {
+  border-color: #40a9ff;
+  box-shadow: 0 2px 6px rgba(64, 169, 255, 0.1);
+}
+
+.split-item-compact.has-discount {
+  border-left: 3px solid #52c41a;
+}
+
+.item-header-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.item-player-badge {
+  width: 20px;
+  height: 20px;
+  background: #1890ff;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.item-name-compact {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 6px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-type-compact {
+  font-size: 8px;
+  padding: 1px 4px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.item-type-compact.role_discount {
+  background: #f6ffed;
+  color: #52c41a;
+  border: 1px solid #b7eb8f;
+}
+
+.item-type-compact.standard {
+  background: #f5f5f5;
+  color: #8c8c8c;
+  border: 1px solid #d9d9d9;
+}
+
+.item-pricing-compact {
+  text-align: center;
+}
+
+.price-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.original-price-compact {
+  font-size: 10px;
+  color: #999;
+  text-decoration: line-through;
+}
+
+.discount-compact {
+  font-size: 9px;
+  background: #ff4d4f;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.final-price-compact {
+  font-size: 12px;
+  font-weight: 700;
+  color: #52c41a;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .summary-stats-compact {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .items-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .items-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* 拍照功能样式 */
 .photo-section {
