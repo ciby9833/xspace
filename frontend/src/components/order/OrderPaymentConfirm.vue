@@ -481,15 +481,150 @@
                 </div>
               </div>
 
-              <!-- 付款项列表 -->
+              <!-- 🆕 合并操作工具栏 -->
+              <div class="merge-controls">
+                <div class="merge-info">
+                  <span class="selected-count">
+                    已选择: {{ getSelectedItemsCount() }} 项
+                  </span>
+                </div>
+                <div class="merge-actions">
+                  <a-button 
+                    v-if="getSelectedItemsCount() > 0"
+                    size="small"
+                    @click="clearAllSelections"
+                    class="clear-selection-btn"
+                  >
+                    取消选择
+                  </a-button>
+                  <a-button 
+                    v-if="getSelectedItemsCount() >= 2"
+                    type="primary" 
+                    size="small"
+                    @click="mergeSelectedPaymentItems"
+                    class="merge-btn"
+                  >
+                    <TeamOutlined />
+                    合并选中项 ({{ getSelectedItemsCount() }})
+                  </a-button>
+                </div>
+              </div>
+
+              <!-- 合并付款组显示 -->
+              <div v-if="mergedPaymentGroups.length > 0" class="merged-groups">
+                <h5 class="merged-title">合并付款组</h5>
+                <div class="merged-items-grid">
+                  <div 
+                    v-for="group in mergedPaymentGroups" 
+                    :key="group.id"
+                    class="merged-payment-card"
+                    :class="{ 'flipped': isCardFlipped(group.id) }"
+                  >
+                    <!-- 卡片正面 -->
+                    <div class="card-front">
+                      <div class="merged-header">
+                        <div class="merged-badge">
+                          <TeamOutlined />
+                          {{ group.player_count }}人
+                        </div>
+                        <div class="merged-name">{{ group.name }}</div>
+                      </div>
+                      
+                      <div class="merged-pricing">
+                        <div class="merged-amount">
+                          Rp {{ formatPrice(group.amount) }}
+                        </div>
+                        <div v-if="group.discount_amount > 0" class="merged-discount">
+                          节省: Rp {{ formatPrice(group.discount_amount) }}
+                        </div>
+                      </div>
+                      
+                      <div class="merged-actions">
+                        <a-button 
+                          size="small" 
+                          @click="toggleCardFlip(group.id)"
+                          class="detail-btn"
+                        >
+                          <EyeOutlined />
+                          详情
+                        </a-button>
+                        <a-button 
+                          size="small" 
+                          @click="splitMergedGroup(group.id)"
+                          class="split-btn"
+                        >
+                          <ScissorOutlined />
+                          拆分
+                        </a-button>
+                      </div>
+                    </div>
+                    
+                    <!-- 卡片背面 -->
+                    <div class="card-back">
+                      <div class="back-header">
+                        <h6>付款详情</h6>
+                        <a-button 
+                          size="small" 
+                          type="text"
+                          @click="toggleCardFlip(group.id)"
+                          class="close-detail-btn"
+                        >
+                          <CloseOutlined />
+                        </a-button>
+                      </div>
+                      
+                      <div class="summary-items">
+                        <div 
+                          v-for="summary in group.type_summary" 
+                          :key="summary.type"
+                          class="summary-item"
+                        >
+                          <div class="summary-type">
+                            <div class="type-info">
+                              <span class="type-name">{{ summary.type_name }}</span>
+                              <span class="type-count">{{ summary.count }}人</span>
+                            </div>
+                            <div class="type-amount">
+                              Rp {{ formatPrice(summary.amount) }}
+                            </div>
+                          </div>
+                          <div v-if="summary.discount_amount > 0" class="summary-discount">
+                            原价: Rp {{ formatPrice(summary.original_amount) }}
+                            <span class="summary-savings">节省: Rp {{ formatPrice(summary.discount_amount) }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div class="detail-total">
+                        <div class="total-line">
+                          <span>合计:</span>
+                          <span class="total-amount">Rp {{ formatPrice(group.amount) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 个人付款项列表 -->
               <div class="split-items-compact">
+                <h5 v-if="mergedPaymentGroups.length > 0" class="individual-title">个人付款项</h5>
                 <div class="items-grid">
                   <div 
                     v-for="item in splitPaymentItems" 
                     :key="item.id"
                     class="split-item-compact"
-                    :class="{ 'has-discount': item.discount_amount > 0 }"
+                    :class="{ 
+                      'has-discount': item.discount_amount > 0,
+                      'selected': isPaymentItemSelected(item.id)
+                    }"
+                    @click="togglePaymentItemSelection(item.id)"
                   >
+                    <!-- 选中状态指示器 -->
+                    <div class="selection-indicator">
+                      <CheckOutlined v-if="isPaymentItemSelected(item.id)" />
+                    </div>
+                    
                     <div class="item-header-compact">
                       <div class="item-player-badge">{{ item.player_index }}</div>
                       <div class="item-name-compact">{{ item.name }}</div>
@@ -785,7 +920,9 @@ import {
   QrcodeOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
-  HomeOutlined
+  HomeOutlined,
+  ScissorOutlined,
+  CloseOutlined
 } from '@ant-design/icons-vue'
 import { orderAPI, generatePaymentItemsSuggestion } from '@/api/order'
 import { getUsersByStore } from '@/api/user'
@@ -821,6 +958,11 @@ const paymentSplitLoading = ref(false)
 const splitPaymentItems = ref([])
 const splitSummary = ref(null)
 const showSplitPayment = ref(false)
+
+// 🆕 付款卡片选中和合并相关数据
+const selectedPaymentItems = ref(new Set())
+const mergedPaymentGroups = ref([])
+const flippedCards = ref(new Set())
 
 // 相机相关
 const cameraVisible = ref(false)
@@ -1417,6 +1559,124 @@ const clearSplitPayment = () => {
   showSplitPayment.value = false;
   splitPaymentItems.value = [];
   splitSummary.value = null;
+  // 清除选中和合并状态
+  selectedPaymentItems.value = new Set();
+  mergedPaymentGroups.value = [];
+  flippedCards.value = new Set();
+};
+
+// 🆕 付款卡片选中和合并功能
+const togglePaymentItemSelection = (itemId) => {
+  if (selectedPaymentItems.value.has(itemId)) {
+    selectedPaymentItems.value.delete(itemId);
+  } else {
+    selectedPaymentItems.value.add(itemId);
+  }
+  // 触发响应式更新
+  selectedPaymentItems.value = new Set(selectedPaymentItems.value);
+};
+
+const isPaymentItemSelected = (itemId) => {
+  return selectedPaymentItems.value.has(itemId);
+};
+
+const getSelectedItemsCount = () => {
+  return selectedPaymentItems.value.size;
+};
+
+const mergeSelectedPaymentItems = () => {
+  if (selectedPaymentItems.value.size < 2) {
+    message.warning('请至少选择2个付款项进行合并');
+    return;
+  }
+
+  // 获取选中的付款项
+  const selectedItems = splitPaymentItems.value.filter(item => 
+    selectedPaymentItems.value.has(item.id)
+  );
+
+  // 按类型汇总
+  const typeSummary = {};
+  selectedItems.forEach(item => {
+    const key = item.type;
+    if (!typeSummary[key]) {
+      typeSummary[key] = {
+        type: key,
+        type_name: key === 'role_discount' ? '折扣价' : '标准价',
+        count: 0,
+        amount: 0,
+        original_amount: 0,
+        discount_amount: 0
+      };
+    }
+    typeSummary[key].count++;
+    typeSummary[key].amount += item.amount;
+    typeSummary[key].original_amount += item.original_amount;
+    typeSummary[key].discount_amount += item.discount_amount;
+  });
+
+  // 创建合并组
+  const mergedGroup = {
+    id: `merged_${Date.now()}`,
+    type: 'merged',
+    name: `合并付款 (${selectedItems.length}人)`,
+    items: selectedItems,
+    type_summary: Object.values(typeSummary),
+    amount: selectedItems.reduce((sum, item) => sum + item.amount, 0),
+    original_amount: selectedItems.reduce((sum, item) => sum + item.original_amount, 0),
+    discount_amount: selectedItems.reduce((sum, item) => sum + item.discount_amount, 0),
+    player_count: selectedItems.length
+  };
+
+  // 从原始列表中移除选中的项
+  splitPaymentItems.value = splitPaymentItems.value.filter(item => 
+    !selectedPaymentItems.value.has(item.id)
+  );
+
+  // 添加合并组
+  mergedPaymentGroups.value.push(mergedGroup);
+
+  // 清除选中状态
+  selectedPaymentItems.value = new Set();
+
+  message.success(`成功合并 ${selectedItems.length} 个付款项`);
+};
+
+const splitMergedGroup = (groupId) => {
+  const groupIndex = mergedPaymentGroups.value.findIndex(group => group.id === groupId);
+  if (groupIndex === -1) return;
+
+  const group = mergedPaymentGroups.value[groupIndex];
+  
+  // 将合并组的项目重新添加到原始列表
+  splitPaymentItems.value.push(...group.items);
+  
+  // 移除合并组
+  mergedPaymentGroups.value.splice(groupIndex, 1);
+  
+  // 清除该卡片的翻转状态
+  flippedCards.value.delete(groupId);
+  flippedCards.value = new Set(flippedCards.value);
+
+  message.success('合并付款已拆分');
+};
+
+const toggleCardFlip = (cardId) => {
+  if (flippedCards.value.has(cardId)) {
+    flippedCards.value.delete(cardId);
+  } else {
+    flippedCards.value.add(cardId);
+  }
+  // 触发响应式更新
+  flippedCards.value = new Set(flippedCards.value);
+};
+
+const isCardFlipped = (cardId) => {
+  return flippedCards.value.has(cardId);
+};
+
+const clearAllSelections = () => {
+  selectedPaymentItems.value = new Set();
 };
 
 // 相机功能
@@ -2401,6 +2661,374 @@ const handleCancel = () => {
 @media (max-width: 480px) {
   .items-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* 🆕 合并操作工具栏样式 */
+.merge-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #fff7e6 0%, #fffbe6 100%);
+  border: 1px solid #ffd591;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+.merge-info .selected-count {
+  font-size: 13px;
+  color: #d46b08;
+  font-weight: 600;
+}
+
+.merge-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.clear-selection-btn {
+  background: #ff4d4f;
+  color: white;
+  border: none;
+  font-weight: 500;
+}
+
+.merge-btn {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  border: none;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 🆕 合并付款组样式 */
+.merged-groups {
+  margin: 20px 0;
+}
+
+.merged-title,
+.individual-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 12px 0;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #e8e8e8;
+}
+
+.merged-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+/* 🆕 翻转卡片样式 */
+.merged-payment-card {
+  position: relative;
+  height: 140px;
+  perspective: 1000px;
+  cursor: pointer;
+}
+
+.card-front,
+.card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  transition: transform 0.6s ease-in-out;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e8e8e8;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-front {
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+  border-color: #91caff;
+  transform: rotateY(0deg);
+}
+
+.card-back {
+  background: linear-gradient(135deg, #f6ffed 0%, #f0f9ff 100%);
+  border-color: #95de64;
+  transform: rotateY(-180deg);
+}
+
+.merged-payment-card.flipped .card-front {
+  transform: rotateY(180deg);
+}
+
+.merged-payment-card.flipped .card-back {
+  transform: rotateY(0deg);
+}
+
+/* 卡片正面样式 */
+.merged-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.merged-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #1890ff;
+  color: white;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.merged-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0050b3;
+  text-align: right;
+  flex: 1;
+  margin-left: 8px;
+}
+
+.merged-pricing {
+  text-align: center;
+  margin: 16px 0;
+}
+
+.merged-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: #52c41a;
+  margin-bottom: 6px;
+}
+
+.merged-discount {
+  font-size: 12px;
+  color: #f5222d;
+  font-weight: 600;
+}
+
+.merged-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.detail-btn {
+  flex: 1;
+  background: #1890ff;
+  color: white;
+  border: none;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  height: 24px;
+}
+
+.split-btn {
+  flex: 1;
+  background: #ff7a45;
+  color: white;
+  border: none;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  height: 24px;
+}
+
+/* 卡片背面样式 */
+.back-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #d9d9d9;
+}
+
+.back-header h6 {
+  margin: 0;
+  font-size: 12px;
+  color: #333;
+  font-weight: 600;
+}
+
+.close-detail-btn {
+  color: #8c8c8c;
+  font-size: 14px;
+  padding: 4px;
+}
+
+.summary-items {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary-item {
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+  padding: 8px;
+  border: 1px solid #e8e8e8;
+}
+
+.summary-type {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.type-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.type-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+.type-count {
+  font-size: 10px;
+  background: #1890ff;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.type-amount {
+  font-size: 12px;
+  font-weight: 700;
+  color: #52c41a;
+}
+
+.summary-discount {
+  font-size: 10px;
+  color: #8c8c8c;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.summary-savings {
+  color: #f5222d;
+  font-weight: 600;
+}
+
+.detail-total {
+  border-top: 1px solid #d9d9d9;
+  padding-top: 8px;
+  margin-top: auto;
+}
+
+.total-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.total-line .total-amount {
+  font-size: 16px;
+  color: #52c41a;
+}
+
+/* 🆕 选中状态样式 */
+.split-item-compact {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.split-item-compact:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(64, 169, 255, 0.2);
+}
+
+.split-item-compact.selected {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  background: #f0f9ff;
+}
+
+.selection-indicator {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background: #52c41a;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.3s ease;
+  z-index: 2;
+  border: 2px solid white;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.split-item-compact.selected .selection-indicator {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 响应式设计优化 */
+@media (max-width: 768px) {
+  .merge-controls {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .merge-actions {
+    justify-content: center;
+  }
+
+  .merged-items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .merged-items-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .merged-actions {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .detail-btn,
+  .split-btn {
+    font-size: 10px;
+    height: 22px;
   }
 }
 
