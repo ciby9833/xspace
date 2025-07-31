@@ -327,6 +327,61 @@ class OrderService extends BaseService {
     return field;
   }
 
+  // 🆕 丰富NPC角色用户信息（获取用户详细信息）
+  async enrichNpcRoleUsersInfo(npcRoleUsers) {
+    if (!npcRoleUsers || !Array.isArray(npcRoleUsers) || npcRoleUsers.length === 0) {
+      return npcRoleUsers;
+    }
+    
+    try {
+      const pool = require('../database/connection');
+      
+      // 提取所有用户ID
+      const userIds = npcRoleUsers
+        .filter(npc => npc.user_id)
+        .map(npc => npc.user_id);
+      
+      if (userIds.length === 0) {
+        return npcRoleUsers;
+      }
+      
+      // 批量查询用户信息 - 使用与orderModel一致的字段名
+      const placeholders = userIds.map((_, index) => `$${index + 1}`).join(', ');
+      const query = `
+        SELECT id, name, email, phone
+        FROM users 
+        WHERE id IN (${placeholders}) AND is_active = true
+      `;
+      
+      const result = await pool.query(query, userIds);
+      const usersMap = new Map();
+      
+      result.rows.forEach(user => {
+        usersMap.set(user.id, {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone
+        });
+      });
+      
+      // 为每个NPC角色添加用户详细信息
+      return npcRoleUsers.map(npc => {
+        const userInfo = usersMap.get(npc.user_id);
+        return {
+          ...npc,
+          user_info: userInfo || null,
+          user_name: userInfo?.name || '未知用户'
+        };
+      });
+      
+    } catch (error) {
+      console.error('获取NPC角色用户信息失败:', error);
+      // 出错时返回原始数据
+      return npcRoleUsers;
+    }
+  }
+
   // 获取订单详情
   async getById(orderId, user) {
     await PermissionChecker.requirePermission(user, 'order.view');
@@ -354,6 +409,8 @@ class OrderService extends BaseService {
     formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
     // 🆕 处理密室NPC角色用户关联字段
     formatted.escape_room_npc_roles_users = this.parseJsonField(order.escape_room_npc_roles_users);
+    // 🆕 获取NPC角色用户的详细信息
+    formatted.escape_room_npc_roles_users = await this.enrichNpcRoleUsersInfo(formatted.escape_room_npc_roles_users);
     // 🆕 处理密室支持语言字段格式
     formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
     
@@ -2568,38 +2625,30 @@ class OrderService extends BaseService {
 
   // 🆕 获取单笔支付订单汇总信息
   async getSinglePaymentOrderSummary(orderId, order, user) {
-    // 单笔支付订单数据直接来源于orders表
-    const stats = {
-      total_players: order.player_count || 0,
-      paid_players: order.payment_status === 'FULL' ? (order.player_count || 0) : 0,
-      partial_players: order.payment_status === 'DP' ? (order.player_count || 0) : 0,
-      pending_players: order.payment_status === 'Not Yet' ? (order.player_count || 0) : 0,
-      total_final_amount: parseFloat(order.total_amount || 0),
-      paid_amount: order.payment_status === 'FULL' ? parseFloat(order.total_amount || 0) : 0,
-      pending_amount: order.payment_status !== 'FULL' ? parseFloat(order.total_amount || 0) : 0,
-      // 折扣统计信息（基于orders表的字段）
-      total_original_amount: parseFloat(order.original_price || order.total_amount || 0),
-      total_discount_amount: parseFloat(order.discount_amount || 0),
-      discount_percentage: parseFloat(order.total_discount_percentage || 0),
-      has_discount: parseFloat(order.discount_amount || 0) > 0,
-      players_with_discount: parseInt(order.total_players_with_discount || 0),
-      players_without_discount: parseInt(order.total_players_without_discount || order.player_count || 0)
-    };
-
-    // 生成基础的玩家和支付记录用于显示
-    const players = this.generateSinglePaymentPlayers(order);
-    const payments = this.generateSinglePaymentRecord(order);
+    const orderPlayerService = require('./orderPlayerService');
+    const orderPaymentService = require('./orderPaymentService');
+    
+    // 🔧 修复：直接从数据库获取实际的玩家和支付数据，而不是生成虚拟数据
+    const players = await orderPlayerService.getPlayersByOrderId(orderId, true, user);
+    const payments = await orderPaymentService.getPaymentsByOrderId(orderId, true, user);
+    
+    // 如果数据库中没有详细的玩家和支付记录，返回空数组而不是虚拟数据
+    const actualPlayers = players || [];
+    const actualPayments = payments || [];
+    
+    // 基于实际数据计算统计信息
+    const stats = this.calculateStatsFromData(actualPlayers, actualPayments);
 
     return {
       order: order,
-      players: players,
-      payments: payments,
+      players: actualPlayers,
+      payments: actualPayments,
       paymentStats: stats,
       summary: {
         order_id: orderId,
         is_multi_payment: false,
-        total_players: order.player_count || 0,
-        total_payments: 1,
+        total_players: actualPlayers.length,
+        total_payments: actualPayments.length,
         ...stats
       }
     };
@@ -2645,48 +2694,7 @@ class OrderService extends BaseService {
     };
   }
 
-  // 🆕 为单笔支付订单生成基础玩家记录（用于显示）
-  generateSinglePaymentPlayers(order) {
-    const players = [];
-    const playerCount = order.player_count || 0;
-    const unitPrice = parseFloat(order.unit_price || order.total_amount || 0) / playerCount;
-    
-    for (let i = 1; i <= playerCount; i++) {
-      players.push({
-        id: `single_player_${i}`,
-        player_name: `玩家 ${i}`,
-        player_phone: order.customer_phone || '',
-        selected_role_name: '标准玩家',
-        original_amount: Math.round(unitPrice * 100) / 100,
-        discount_amount: 0,
-        final_amount: Math.round(unitPrice * 100) / 100,
-        payment_status: order.payment_status === 'FULL' ? 'paid' : 
-                       order.payment_status === 'DP' ? 'partial' : 'pending',
-        discount_type: 'none',
-        discount_percentage: 0,
-        discount_fixed_amount: 0
-      });
-    }
-    
-    return players;
-  }
 
-  // 🆕 为单笔支付订单生成基础支付记录（用于显示）
-  generateSinglePaymentRecord(order) {
-    return [{
-      id: 'single_payment',
-      payer_name: order.customer_name || '客户',
-      payer_phone: order.customer_phone || '',
-      payment_amount: parseFloat(order.total_amount || 0),
-      payment_method: order.payment_method || 'Bank Transfer',
-      payment_date: order.payment_date || order.created_at,
-      payment_status: order.payment_status === 'FULL' ? 'confirmed' : 
-                     order.payment_status === 'DP' ? 'partial' : 'pending',
-      covers_player_count: order.player_count || 0,
-      payment_for_roles: ['标准玩家'],
-      notes: '单笔支付订单记录'
-    }];
-  }
 
   // 🆕 多笔付款订单创建
   async createOrderWithMultiPayment(orderData, user) {
@@ -2769,7 +2777,8 @@ class OrderService extends BaseService {
           payment_for_roles: [item.name],
           original_total_amount: parseFloat(item.amount) || 0,
           discount_total_amount: 0,
-          payment_proof_images: [], // 支付凭证可以后续上传
+          // 🆕 处理从前端传来的凭证图片
+          payment_proof_images: item.payment_proof_images || [],
           notes: `${item.name} - ${item.description}`,
           created_by: user.id
         };

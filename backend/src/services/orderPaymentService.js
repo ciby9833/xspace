@@ -114,7 +114,12 @@ class OrderPaymentService extends BaseService {
     
     const payments = await this.model.findByOrderId(orderId, withPlayers);
     
-    return this.formatTimeFieldsArray(payments);
+    // 🆕 格式化支付记录，包括图片格式转换
+    const formattedPayments = this.formatTimeFieldsArray(payments).map(payment => {
+      return this.formatPaymentImages(payment);
+    });
+    
+    return formattedPayments;
   }
 
   // 获取单个支付记录详情
@@ -129,7 +134,9 @@ class OrderPaymentService extends BaseService {
     // 检查订单访问权限
     await this.validateOrderAccess(payment.order_id, user);
     
-    return this.formatTimeFields(payment);
+    // 🆕 格式化支付记录，包括图片格式转换
+    const formattedPayment = this.formatTimeFields(payment);
+    return this.formatPaymentImages(formattedPayment);
   }
 
   // 更新支付记录
@@ -563,6 +570,50 @@ class OrderPaymentService extends BaseService {
     }
     
     return results;
+  }
+
+  // 🆕 格式化支付记录的图片数据
+  formatPaymentImages(payment) {
+    const formatted = { ...payment };
+    
+    // 将 payment_proof_images 转换为标准的 images 格式
+    if (payment.payment_proof_images && Array.isArray(payment.payment_proof_images)) {
+      formatted.images = payment.payment_proof_images.map((img, index) => {
+        let imageData;
+        
+        // 如果是字符串，尝试解析JSON
+        if (typeof img === 'string') {
+          try {
+            imageData = JSON.parse(img);
+          } catch (e) {
+            console.warn('解析payment_proof_images失败:', e);
+            // 如果解析失败，假设是URL字符串
+            imageData = { url: img, name: `image_${index}`, type: 'proof' };
+          }
+        } else if (typeof img === 'object') {
+          imageData = img;
+        } else {
+          imageData = { url: img, name: `image_${index}`, type: 'proof' };
+        }
+        
+        // 标准化字段名称
+        return {
+          id: imageData.id || `payment_proof_${payment.id}_${index}`,
+          image_url: imageData.url || imageData.image_url,
+          image_name: imageData.name || imageData.image_name || `payment_proof_${index}`,
+          image_type: imageData.type || imageData.image_type || 'proof',
+          sort_order: imageData.sort_order || index,
+          server_path: imageData.server_path || imageData.path
+        };
+      });
+      
+      // 移除原始的 payment_proof_images 字段
+      delete formatted.payment_proof_images;
+    } else {
+      formatted.images = [];
+    }
+    
+    return formatted;
   }
 }
 

@@ -1043,7 +1043,7 @@ import {
   ScissorOutlined,
   CloseOutlined
 } from '@ant-design/icons-vue'
-import { orderAPI, generatePaymentItemsSuggestion } from '@/api/order'
+import { orderAPI, generatePaymentItemsSuggestion, createOrderWithMultiPayment } from '@/api/order'
 import { getUsersByStore } from '@/api/user'
 import { rolePricingTemplateAPI } from '@/api/multiPayment'
 
@@ -1870,27 +1870,31 @@ const handleProofUpload = async (file) => {
       return false;
     }
     
-    // 创建FormData
+    // 创建FormData并上传到服务器
     const formData = new FormData();
     formData.append('images', file);
     
-    // TODO: 调用API上传凭证，这里先模拟
-    // const response = await orderPaymentAPI.uploadProof(paymentId, formData);
+    // 🆕 调用API上传凭证到服务器
+    const response = await orderAPI.uploadImages(formData);
     
-    // 模拟上传成功，创建预览URL
-    const previewUrl = URL.createObjectURL(file);
+    if (!response.data || !response.data.images || response.data.images.length === 0) {
+      throw new Error('图片上传失败，服务器未返回有效的图片信息');
+    }
     
-    // 存储到对应卡片的凭证数组中
+    const uploadedImage = response.data.images[0]; // 获取第一张上传的图片
+    
+    // 存储到对应卡片的凭证数组中（使用服务器返回的URL）
     if (!cardProofImages.value[selectedId]) {
       cardProofImages.value[selectedId] = [];
     }
     
     cardProofImages.value[selectedId].push({
-      id: Date.now(), // 临时ID
-      url: previewUrl,
-      name: file.name,
-      size: file.size,
-      type: 'payment_proof'
+      id: uploadedImage.id || Date.now(),
+      url: uploadedImage.url, // 使用服务器返回的URL
+      name: uploadedImage.name || file.name,
+      size: uploadedImage.size || file.size,
+      type: 'payment_proof',
+      server_path: uploadedImage.path // 保存服务器路径
     });
     
     message.success('付款凭证上传成功');
@@ -2121,7 +2125,71 @@ const validateForm = () => {
     return false;
   }
   
+  // 🆕 拆分付款模式下的验证
+  if (showSplitPayment.value && formData.free_pay === 'Pay') {
+    const allPaymentItems = [...splitPaymentItems.value, ...mergedPaymentGroups.value]
+    if (allPaymentItems.length === 0) {
+      message.error('拆分付款模式下必须至少有一个付款项')
+      return false
+    }
+    
+    // 验证付款项的总人数与游戏人数匹配
+    const totalPaymentPlayers = allPaymentItems.reduce((sum, item) => 
+      sum + (item.players || item.player_count || 0), 0
+    )
+    
+    if (totalPaymentPlayers !== formData.player_count) {
+      message.error(`付款项总人数 (${totalPaymentPlayers}) 与游戏人数 (${formData.player_count}) 不匹配`)
+      return false
+    }
+    
+    // 验证付款项的总金额
+    const totalPaymentAmount = allPaymentItems.reduce((sum, item) => 
+      sum + parseFloat(item.amount || 0), 0
+    )
+    
+    if (Math.abs(totalPaymentAmount - formData.total_amount) > 0.01) {
+      message.error(`付款项总金额 (Rp ${formatPrice(totalPaymentAmount)}) 与订单总金额 (Rp ${formatPrice(formData.total_amount)}) 不匹配`)
+      return false
+    }
+  }
+  
   return true
+}
+
+// 🆕 格式化拆分付款数据以匹配后端API结构
+const formatSplitPaymentData = () => {
+  const allPaymentItems = [...splitPaymentItems.value, ...mergedPaymentGroups.value]
+  
+  return allPaymentItems.map(item => {
+    const itemData = {
+      name: item.name || item.role_name || '标准玩家',
+      type: item.type || 'standard',
+      players: item.players || item.player_count || 1,
+      unitPrice: parseFloat(item.unitPrice || item.unit_price || formData.unit_price || 0),
+      amount: parseFloat(item.amount || 0),
+      description: item.description || item.notes || '',
+      payer_name: item.payer_name || formData.customer_name || '待填写',
+      payer_phone: item.payer_phone || formData.customer_phone || '',
+      payment_method: item.payment_method || formData.payment_method || 'Bank Transfer',
+      payment_status: item.payment_status || 'pending'
+    }
+    
+    // 添加凭证图片 - 使用标准格式
+    const itemId = item.id || item.key
+    if (cardProofImages.value[itemId] && cardProofImages.value[itemId].length > 0) {
+      itemData.payment_proof_images = cardProofImages.value[itemId].map((img, index) => ({
+        id: img.id || `temp_${Date.now()}_${index}`,
+        image_url: img.url,
+        image_name: img.name,
+        image_type: 'proof',
+        sort_order: index,
+        server_path: img.server_path || img.url
+      }))
+    }
+    
+    return itemData
+  })
 }
 
 const handleSubmit = async () => {
@@ -2207,9 +2275,33 @@ const handleSubmit = async () => {
     
     console.log('创建订单数据:', orderData)
     
-    const response = await orderAPI.create(orderData)
+    let response
     
-    message.success('订单创建成功！')
+    // 🆕 根据是否启用拆分付款选择不同的API
+    if (showSplitPayment.value && (splitPaymentItems.value.length > 0 || mergedPaymentGroups.value.length > 0)) {
+      // 使用多笔付款API
+      const paymentItems = formatSplitPaymentData()
+      const multiPaymentData = {
+        basicOrderData: orderData,
+        paymentItems: paymentItems,
+        uploadedImages: uploadedImages
+      }
+      
+      console.log('🚀 使用多笔付款API创建订单:', {
+        基础订单数据: orderData,
+        付款项数量: paymentItems.length,
+        付款项详情: paymentItems
+      })
+      
+      response = await createOrderWithMultiPayment(multiPaymentData)
+      message.success(`多笔付款订单创建成功！共${paymentItems.length}笔付款`)
+    } else {
+      // 使用标准API
+      console.log('📝 使用标准API创建订单')
+      response = await orderAPI.create(orderData)
+      message.success('订单创建成功！')
+    }
+    
     emit('success', response.data)
     
   } catch (error) {

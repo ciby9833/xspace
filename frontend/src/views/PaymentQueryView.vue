@@ -220,8 +220,17 @@
           <a-alert 
             v-if="!currentOrder?.enable_multi_payment" 
             message="传统订单说明" 
-            description="此订单为传统订单，系统基于订单基本信息生成了玩家和支付记录用于展示。如需详细的多笔支付管理，请使用多笔支付功能创建订单。" 
+            description="此订单为传统订单，系统基于订单的角色模板和折扣信息生成了玩家详情用于展示，支付记录显示为统一支付。传统订单的金额按角色模板分配，但实际收款为统一收取。" 
             type="info" 
+            show-icon 
+            style="margin-top: 16px"
+          />
+          
+          <a-alert 
+            v-if="currentOrder?.enable_multi_payment" 
+            message="多笔支付订单说明" 
+            description="此订单为多笔支付订单，显示的是数据库中实际存储的玩家信息和支付记录，包含真实的支付凭证和详细的支付状态。" 
+            type="success" 
             show-icon 
             style="margin-top: 16px"
           />
@@ -324,6 +333,35 @@
                     </a-tag>
                   </template>
 
+                  <template v-if="column.key === 'payment_proof'">
+                    <div v-if="record.images && record.images.length > 0">
+                      <a-tag color="green" size="small">
+                        <PictureOutlined />
+                        {{ record.images.length }}张凭证
+                      </a-tag>
+                      <div style="margin-top: 4px;">
+                        <a-image
+                          v-for="(image, index) in record.images.slice(0, 2)"
+                          :key="index"
+                          :src="image.image_url"
+                          :width="30"
+                          :height="30"
+                          style="margin-right: 4px; border-radius: 4px;"
+                          :preview="true"
+                        />
+                        <span v-if="record.images.length > 2" style="font-size: 12px; color: #666;">
+                          +{{ record.images.length - 2 }}
+                        </span>
+                      </div>
+                    </div>
+                    <div v-else>
+                      <a-tag color="orange" size="small">
+                        <FileImageOutlined />
+                        无凭证
+                      </a-tag>
+                    </div>
+                  </template>
+
                   <template v-if="column.key === 'payment_date'">
                     {{ formatDateTime(record.payment_date) }}
                   </template>
@@ -348,7 +386,9 @@ import {
   PhoneOutlined,
   UserOutlined,
   ClockCircleOutlined,
-  ShopOutlined
+  ShopOutlined,
+  PictureOutlined,
+  FileImageOutlined
 } from '@ant-design/icons-vue'
 
 // API 导入
@@ -405,6 +445,7 @@ const paymentColumns = [
   { title: '支付金额', key: 'payment_amount', width: 120 },
   { title: '支付方式', key: 'payment_method', width: 100 },
   { title: '支付状态', key: 'payment_status', width: 100 },
+  { title: '支付凭证', key: 'payment_proof', width: 120 },
   { title: '支付时间', key: 'payment_date', width: 150 }
 ]
 
@@ -496,6 +537,35 @@ const viewPaymentDetails = async (order) => {
   try {
     const response = await orderAPI.getOrderPaymentSummary(order.id)
     if (response.success) {
+      // 🆕 处理支付记录中的图片数据格式转换
+      if (response.data.payments && response.data.payments.length > 0) {
+        response.data.payments = response.data.payments.map(payment => {
+          // 如果已经有 images 字段，直接使用（多笔支付场景）
+          if (payment.images && Array.isArray(payment.images)) {
+            return payment
+          }
+          // 如果有 payment_proof_images 字段，需要转换（兼容旧数据）
+          if (payment.payment_proof_images) {
+            return {
+              ...payment,
+              images: formatPaymentImages(payment)
+            }
+          }
+          // 都没有的话，设置为空数组
+          return {
+            ...payment,
+            images: []
+          }
+        })
+      }
+      
+      // 🆕 对于单笔支付订单，如果后端返回空数组，则生成显示数据
+      if (!response.data.order.enable_multi_payment && 
+          (!response.data.players || response.data.players.length === 0)) {
+        response.data.players = generateSinglePaymentPlayers(response.data.order)
+        response.data.payments = generateSinglePaymentRecord(response.data.order)
+      }
+      
       paymentDetails.value = response.data
     }
   } catch (error) {
@@ -589,6 +659,175 @@ const getDiscountText = (player) => {
     return '混合折扣'
   }
   return '无折扣'
+}
+
+// 🆕 为单笔支付订单生成玩家显示数据
+const generateSinglePaymentPlayers = (order) => {
+  const players = []
+  const templates = order.selected_role_templates || []
+  const unitPrice = parseFloat(order.unit_price || 0)
+  const totalPlayerCount = order.player_count || 0
+  let playerIndex = 1
+  
+  // 根据角色模板生成玩家数据
+  templates.forEach(template => {
+    const playerCount = template.player_count || 1
+    
+    for (let i = 0; i < playerCount; i++) {
+      const originalAmount = unitPrice
+      let discountAmount = 0
+      let finalAmount = originalAmount
+      
+      // 计算折扣
+      if (template.discount_type === 'percentage') {
+        const discountRate = parseFloat(template.discount_value || 0) / 100
+        discountAmount = originalAmount * discountRate  
+        finalAmount = originalAmount - discountAmount
+      } else if (template.discount_type === 'fixed') {
+        discountAmount = parseFloat(template.discount_value || 0)
+        finalAmount = Math.max(0, originalAmount - discountAmount)
+      } else if (template.discount_type === 'free') {
+        discountAmount = originalAmount
+        finalAmount = 0
+      }
+      
+      players.push({
+        id: `single_player_${playerIndex}`,
+        player_name: `${template.role_name || '标准玩家'} - 第${i + 1}人`,
+        player_phone: order.customer_phone || '',
+        selected_role_name: template.role_name || '标准玩家',
+        original_amount: originalAmount,
+        discount_amount: discountAmount,
+        final_amount: finalAmount,
+        payment_status: order.payment_status === 'FULL' ? 'paid' : 
+                       order.payment_status === 'DP' ? 'partial' : 'pending',
+        discount_type: template.discount_type || 'none',
+        discount_percentage: template.discount_type === 'percentage' ? parseFloat(template.discount_value || 0) : 0,
+        discount_fixed_amount: template.discount_type === 'fixed' ? parseFloat(template.discount_value || 0) : 0,
+        notes: template.discount_type !== 'none' ? `${getDiscountTypeDescription(template)}` : ''
+      })
+      
+      playerIndex++
+    }
+  })
+  
+  // 🔧 修复：补充剩余的标准玩家（没有折扣的玩家）
+  const remainingPlayerCount = totalPlayerCount - players.length
+  for (let i = 0; i < remainingPlayerCount; i++) {
+    players.push({
+      id: `single_player_${playerIndex}`,
+      player_name: `标准玩家 - 第${i + 1}人`,
+      player_phone: order.customer_phone || '',
+      selected_role_name: '标准玩家',
+      original_amount: unitPrice,
+      discount_amount: 0,
+      final_amount: unitPrice,
+      payment_status: order.payment_status === 'FULL' ? 'paid' : 
+                     order.payment_status === 'DP' ? 'partial' : 'pending',
+      discount_type: 'none',
+      discount_percentage: 0,
+      discount_fixed_amount: 0,
+      notes: ''
+    })
+    
+    playerIndex++
+  }
+  
+  // 如果没有角色模板，按玩家数量生成所有标准玩家
+  if (templates.length === 0) {
+    for (let i = 1; i <= totalPlayerCount; i++) {
+      players.push({
+        id: `single_player_${i}`,
+        player_name: `标准玩家 ${i}`,
+        player_phone: order.customer_phone || '',
+        selected_role_name: '标准玩家',
+        original_amount: unitPrice,
+        discount_amount: 0,
+        final_amount: unitPrice,
+        payment_status: order.payment_status === 'FULL' ? 'paid' : 
+                       order.payment_status === 'DP' ? 'partial' : 'pending',
+        discount_type: 'none',
+        discount_percentage: 0,
+        discount_fixed_amount: 0,
+        notes: ''
+      })
+    }
+  }
+  
+  return players
+}
+
+// 🆕 为单笔支付订单生成支付记录显示数据
+const generateSinglePaymentRecord = (order) => {
+  return [{
+    id: 'single_payment',
+    payer_name: order.customer_name || '客户',
+    payer_phone: order.customer_phone || '',
+    payment_amount: parseFloat(order.total_amount || 0),
+    payment_method: order.payment_method || 'Bank Transfer',
+    payment_date: order.payment_date || order.created_at,
+    payment_status: order.payment_status === 'FULL' ? 'confirmed' : 
+                   order.payment_status === 'DP' ? 'partial' : 'pending',
+    covers_player_count: order.player_count || 0,
+    payment_for_roles: ['所有玩家'],
+    notes: '传统订单统一支付',
+    images: order.images || []
+  }]
+}
+
+// 🆕 获取折扣类型描述
+const getDiscountTypeDescription = (template) => {
+  if (template.discount_type === 'percentage') {
+    return `-${template.discount_value}%`
+  } else if (template.discount_type === 'fixed') {
+    return `-Rp ${formatCurrency(template.discount_value)}`
+  } else if (template.discount_type === 'free') {
+    return '免费'
+  }
+  return ''
+}
+
+// 🆕 格式化支付记录中的图片数据
+const formatPaymentImages = (payment) => {
+  if (!payment.payment_proof_images) return []
+  
+  // 如果是字符串数组，需要解析JSON
+  if (Array.isArray(payment.payment_proof_images)) {
+    return payment.payment_proof_images.map((img, index) => {
+      if (typeof img === 'string') {
+        try {
+          const parsed = JSON.parse(img)
+          return {
+            id: parsed.id || `img_${index}`,
+            image_url: parsed.image_url || parsed.url,
+            image_name: parsed.image_name || parsed.name || `凭证${index + 1}`,
+            image_type: parsed.image_type || parsed.type || 'proof',
+            sort_order: parsed.sort_order || index
+          }
+        } catch (e) {
+          // 如果解析失败，假设它就是URL字符串
+          return {
+            id: `img_${index}`,
+            image_url: img,
+            image_name: `凭证${index + 1}`,
+            image_type: 'proof',
+            sort_order: index
+          }
+        }
+      } else if (typeof img === 'object') {
+        return {
+          id: img.id || `img_${index}`,
+          image_url: img.image_url || img.url,
+          image_name: img.image_name || img.name || `凭证${index + 1}`,
+          image_type: img.image_type || img.type || 'proof',
+          sort_order: img.sort_order || index
+        }
+      }
+      return null
+    }).filter(Boolean)
+  }
+  
+  return []
 }
 </script>
 
