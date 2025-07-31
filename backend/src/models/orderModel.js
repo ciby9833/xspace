@@ -340,7 +340,7 @@ class OrderModel {
         company_id, store_id, room_id, order_type, order_date, weekday, language,
         start_time, end_time, duration, customer_name, customer_phone, player_count,
         internal_support, script_id, script_name, game_host_id, npc_id,
-        escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
+        escape_room_id, escape_room_name, escape_room_npc_roles, escape_room_npc_roles_users, is_group_booking, include_photos, include_cctv,
         booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
         promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
         status, created_by, images, selected_role_templates,
@@ -359,7 +359,7 @@ class OrderModel {
           company_id, store_id, room_id, order_type, order_date, weekday, language,
           start_time, end_time, duration, customer_name, customer_phone, player_count,
           internal_support, script_id, script_name, game_host_id, npc_id,
-          escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
+          escape_room_id, escape_room_name, escape_room_npc_roles, escape_room_npc_roles_users, is_group_booking, include_photos, include_cctv,
           booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
           promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
           status, created_by, selected_role_templates, enable_multi_payment,
@@ -370,7 +370,7 @@ class OrderModel {
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
           $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38,
-          $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57
+          $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58
         ) RETURNING id
       `;
 
@@ -378,7 +378,7 @@ class OrderModel {
         company_id, store_id, room_id, order_type, order_date, weekday, language,
         start_time, end_time, duration, customer_name, customer_phone, player_count,
         internal_support, script_id, script_name, game_host_id, npc_id,
-        escape_room_id, escape_room_name, escape_room_npc_roles, is_group_booking, include_photos, include_cctv,
+        escape_room_id, escape_room_name, escape_room_npc_roles, escape_room_npc_roles_users, is_group_booking, include_photos, include_cctv,
         booking_type, is_free, unit_price, total_amount, payment_status, payment_date, payment_method,
         promo_code, promo_quantity, promo_discount, pic_id, pic_payment, notes,
         status, created_by, selected_role_templates ? JSON.stringify(selected_role_templates) : null,
@@ -471,6 +471,13 @@ class OrderModel {
             }
           } else if (key === 'escape_room_npc_roles') {
             // 处理密室NPC角色字段
+            if (updateData[key] && typeof updateData[key] === 'object') {
+              values.push(JSON.stringify(updateData[key]));
+            } else {
+              values.push(updateData[key]);
+            }
+          } else if (key === 'escape_room_npc_roles_users') {
+            // 🆕 处理密室NPC角色用户关联字段
             if (updateData[key] && typeof updateData[key] === 'object') {
               values.push(JSON.stringify(updateData[key]));
             } else {

@@ -127,29 +127,46 @@
           
           <!-- 🆕 密室NPC角色选择 -->
           <div v-if="bookingData.item_type === 'escape_room' && escapeRoomNpcRoles.length > 0" class="form-item full-width">
-            <label>NPC角色</label>
-            <a-select 
-              v-model:value="formData.escape_room_npc_roles"
-              mode="multiple"
-              placeholder="请选择NPC角色（可多选）"
-              class="full-width"
-              allowClear
-              show-search
-              :filter-option="filterNpcOption"
-            >
-              <a-select-option 
-                v-for="role in escapeRoomNpcRoles" 
-                :key="role" 
-                :value="role"
-              >
-                <div class="npc-role-option">
-                  <TeamOutlined />
-                  <span>{{ role }}</span>
+            <label>NPC角色配置</label>
+            <div class="npc-roles-container">
+              <div v-for="role in escapeRoomNpcRoles" :key="role" class="npc-role-item">
+                <div class="role-select">
+                  <a-checkbox 
+                    v-model:checked="selectedNpcRoles[role]"
+                    @change="onNpcRoleChange(role, $event.target.checked)"
+                  >
+                    <div class="npc-role-option">
+                      <TeamOutlined />
+                      <span>{{ role }}</span>
+                    </div>
+                  </a-checkbox>
                 </div>
-              </a-select-option>
-            </a-select>
+                <div v-if="selectedNpcRoles[role]" class="user-select">
+                  <a-select 
+                    v-model:value="npcRoleUsers[role]"
+                    placeholder="选择扮演该角色的用户"
+                    class="role-user-select"
+                    show-search
+                    :filter-option="filterOption"
+                    allowClear
+                  >
+                    <a-select-option 
+                      v-for="host in gameHosts" 
+                      :key="host.user_id" 
+                      :value="host.user_id"
+                    >
+                      <div class="staff-option">
+                        <UserOutlined />
+                        <span>{{ host.username }}</span>
+                        <span class="real-name">({{ host.real_name || host.username }})</span>
+                      </div>
+                    </a-select-option>
+                  </a-select>
+                </div>
+              </div>
+            </div>
             <small class="npc-role-hint">
-              该密室共有{{ escapeRoomNpcRoles.length }}个NPC角色可选，可根据需要选择多个角色
+              该密室共有{{ escapeRoomNpcRoles.length }}个NPC角色可选，请为每个选中的角色指定扮演者
             </small>
           </div>
           
@@ -418,6 +435,7 @@
                 <h4>价格计算预览</h4>
                 <div class="preview-actions">
                   <a-button 
+                    v-if="formData.player_count && formData.player_count > 1"
                     type="primary" 
                     size="small"
                     @click="generateSplitPayment"
@@ -489,6 +507,25 @@
                   </span>
                 </div>
                 <div class="merge-actions">
+                  <!-- 付款凭证上传按钮 - 只有选中1个卡片时显示 -->
+                  <a-upload
+                    v-if="getSelectedItemsCount() === 1"
+                    :file-list="[]"
+                    :before-upload="handleProofUpload"
+                    accept="image/*"
+                    :show-upload-list="false"
+                    multiple
+                  >
+                    <a-button 
+                      size="small"
+                      :loading="uploadingProof"
+                      class="proof-upload-btn"
+                    >
+                      <CameraOutlined />
+                      上传付款凭证
+                    </a-button>
+                  </a-upload>
+                  
                   <a-button 
                     v-if="getSelectedItemsCount() > 0"
                     size="small"
@@ -497,6 +534,7 @@
                   >
                     取消选择
                   </a-button>
+                  
                   <a-button 
                     v-if="getSelectedItemsCount() >= 2"
                     type="primary" 
@@ -507,6 +545,11 @@
                     <TeamOutlined />
                     合并选中项 ({{ getSelectedItemsCount() }})
                   </a-button>
+                  
+                  <!-- 多选提示 -->
+                  <span v-if="getSelectedItemsCount() > 1" class="multi-select-hint">
+                    请选择某个具体的人上传凭证
+                  </span>
                 </div>
               </div>
 
@@ -518,10 +561,19 @@
                     v-for="group in mergedPaymentGroups" 
                     :key="group.id"
                     class="merged-payment-card"
-                    :class="{ 'flipped': isCardFlipped(group.id) }"
+                    :class="{ 
+                      'flipped': isCardFlipped(group.id),
+                      'selected': isPaymentItemSelected(group.id)
+                    }"
+                    @click.stop="togglePaymentItemSelection(group.id)"
                   >
                     <!-- 卡片正面 -->
                     <div class="card-front">
+                      <!-- 🆕 合并卡片选中状态指示器 -->
+                      <div class="merged-selection-indicator">
+                        <CheckOutlined v-if="isPaymentItemSelected(group.id)" />
+                      </div>
+                      
                       <div class="merged-header">
                         <div class="merged-badge">
                           <TeamOutlined />
@@ -539,10 +591,40 @@
                         </div>
                       </div>
                       
+                      <!-- 🆕 合并卡片凭证显示 -->
+                      <div v-if="cardProofImages[group.id]?.length > 0" class="merged-proof-display">
+                        <div class="proof-count">
+                          <CameraOutlined />
+                          {{ cardProofImages[group.id].length }}张凭证
+                        </div>
+                      </div>
+                      
+
+                      
+                      <!-- 🆕 合并卡片凭证操作区域 -->
+                      <div v-if="cardProofImages[group.id]?.length > 0" class="merged-proof-actions">
+                        <a-button 
+                          size="small" 
+                          type="text"
+                          @click.stop="viewProofImages(group.id)"
+                          class="view-proof-btn"
+                        >
+                          <EyeOutlined />
+                        </a-button>
+                        <a-button 
+                          size="small" 
+                          type="text"
+                          @click.stop="deleteProofImages(group.id)"
+                          class="delete-proof-btn"
+                        >
+                          <DeleteOutlined />
+                        </a-button>
+                      </div>
+                      
                       <div class="merged-actions">
                         <a-button 
                           size="small" 
-                          @click="toggleCardFlip(group.id)"
+                          @click.stop="toggleCardFlip(group.id)"
                           class="detail-btn"
                         >
                           <EyeOutlined />
@@ -550,7 +632,7 @@
                         </a-button>
                         <a-button 
                           size="small" 
-                          @click="splitMergedGroup(group.id)"
+                          @click.stop="splitMergedGroup(group)"
                           class="split-btn"
                         >
                           <ScissorOutlined />
@@ -642,6 +724,32 @@
                       </div>
                       <div class="final-price-compact">
                         Rp {{ formatPrice(item.amount) }}
+                      </div>
+                    </div>
+                    
+                    <!-- 🆕 付款凭证显示区域 -->
+                    <div v-if="cardProofImages[item.id] && cardProofImages[item.id].length > 0" class="proof-images-compact">
+                      <div class="proof-indicator">
+                        <CameraOutlined />
+                        <span>{{ cardProofImages[item.id].length }}张凭证</span>
+                      </div>
+                      <div class="proof-actions">
+                        <a-button 
+                          size="small" 
+                          type="text"
+                          @click.stop="viewProofImages(item.id)"
+                          class="view-proof-btn"
+                        >
+                          <EyeOutlined />
+                        </a-button>
+                        <a-button 
+                          size="small" 
+                          type="text"
+                          @click.stop="deleteProofImages(item.id)"
+                          class="delete-proof-btn"
+                        >
+                          <DeleteOutlined />
+                        </a-button>
                       </div>
                     </div>
                   </div>
@@ -893,13 +1001,24 @@
       <img :src="previewImageUrl" style="width: 100%" />
     </a-modal>
 
+    <!-- 🆕 付款凭证预览模态框 -->
+    <a-modal
+      v-model:open="proofPreviewVisible"
+      title="付款凭证"
+      :footer="null"
+      width="80%"
+      :style="{ maxWidth: '800px' }"
+    >
+      <img :src="previewProofUrl" style="width: 100%" alt="付款凭证" />
+    </a-modal>
+
 
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import {
   UserOutlined,
   TeamOutlined,
@@ -947,6 +1066,8 @@ const gameHosts = ref([])
 
 // 🆕 密室NPC角色相关数据
 const escapeRoomNpcRoles = ref([])
+const selectedNpcRoles = ref({}) // {角色名: 是否选中}
+const npcRoleUsers = ref({}) // {角色名: 用户ID}
 
 // 🆕 角色定价相关数据
 const availableRoleTemplates = ref([])
@@ -963,6 +1084,12 @@ const showSplitPayment = ref(false)
 const selectedPaymentItems = ref(new Set())
 const mergedPaymentGroups = ref([])
 const flippedCards = ref(new Set())
+
+// 🆕 付款凭证上传相关数据
+const uploadingProof = ref(false)
+const proofPreviewVisible = ref(false)
+const previewProofUrl = ref('')
+const cardProofImages = ref({}) // 存储每个卡片的凭证图片 {cardId: [images]}
 
 // 相机相关
 const cameraVisible = ref(false)
@@ -1142,6 +1269,42 @@ const loadEscapeRoomNpcRoles = async () => {
     escapeRoomNpcRoles.value = []
   }
 }
+
+// 🆕 处理NPC角色选择变化
+const onNpcRoleChange = (role, checked) => {
+  selectedNpcRoles.value[role] = checked
+  
+  if (!checked) {
+    // 如果取消选择角色，也清除对应的用户选择
+    delete npcRoleUsers.value[role]
+  }
+  
+  // 更新表单数据中的escape_room_npc_roles
+  updateEscapeRoomNpcRoles()
+}
+
+// 🆕 更新表单数据中的NPC角色信息
+const updateEscapeRoomNpcRoles = () => {
+  const selectedRolesList = []
+  
+  // 收集所有选中的角色和对应的用户
+  Object.keys(selectedNpcRoles.value).forEach(role => {
+    if (selectedNpcRoles.value[role] && npcRoleUsers.value[role]) {
+      selectedRolesList.push({
+        role: role,
+        user_id: npcRoleUsers.value[role]
+      })
+    }
+  })
+  
+  formData.escape_room_npc_roles = selectedRolesList
+  console.log('🎭 更新NPC角色配置:', formData.escape_room_npc_roles)
+}
+
+// 🆕 监听角色用户选择变化
+watch(npcRoleUsers, () => {
+  updateEscapeRoomNpcRoles()
+}, { deep: true })
 
 // 格式化日期显示（加上星期几）
 const formatDateWithWeekday = (dateString) => {
@@ -1563,6 +1726,8 @@ const clearSplitPayment = () => {
   selectedPaymentItems.value = new Set();
   mergedPaymentGroups.value = [];
   flippedCards.value = new Set();
+  // 🆕 清除凭证数据
+  cardProofImages.value = {};
 };
 
 // 🆕 付款卡片选中和合并功能
@@ -1677,6 +1842,118 @@ const isCardFlipped = (cardId) => {
 
 const clearAllSelections = () => {
   selectedPaymentItems.value = new Set();
+};
+
+// 🆕 付款凭证上传功能
+const handleProofUpload = async (file) => {
+  try {
+    uploadingProof.value = true;
+    
+    // 检查文件类型
+    const isImage = file.type.startsWith('image/');
+    if (!isImage) {
+      message.error('只能上传图片文件');
+      return false;
+    }
+    
+    // 检查文件大小
+    const isLt5M = file.size / 1024 / 1024 < 5;
+    if (!isLt5M) {
+      message.error('图片大小不能超过5MB');
+      return false;
+    }
+    
+    // 获取选中的卡片ID（只有1个）
+    const selectedId = Array.from(selectedPaymentItems.value)[0];
+    if (!selectedId) {
+      message.error('请先选择要上传凭证的付款项');
+      return false;
+    }
+    
+    // 创建FormData
+    const formData = new FormData();
+    formData.append('images', file);
+    
+    // TODO: 调用API上传凭证，这里先模拟
+    // const response = await orderPaymentAPI.uploadProof(paymentId, formData);
+    
+    // 模拟上传成功，创建预览URL
+    const previewUrl = URL.createObjectURL(file);
+    
+    // 存储到对应卡片的凭证数组中
+    if (!cardProofImages.value[selectedId]) {
+      cardProofImages.value[selectedId] = [];
+    }
+    
+    cardProofImages.value[selectedId].push({
+      id: Date.now(), // 临时ID
+      url: previewUrl,
+      name: file.name,
+      size: file.size,
+      type: 'payment_proof'
+    });
+    
+    message.success('付款凭证上传成功');
+    
+    // 清除选中状态
+    clearAllSelections();
+    
+  } catch (error) {
+    console.error('上传凭证失败:', error);
+    message.error('上传凭证失败');
+  } finally {
+    uploadingProof.value = false;
+  }
+  
+  return false; // 阻止自动上传
+};
+
+// 🆕 查看凭证图片
+const viewProofImages = (cardId) => {
+  const images = cardProofImages.value[cardId];
+  if (images && images.length > 0) {
+    // 显示第一张图片
+    previewProofUrl.value = images[0].url;
+    proofPreviewVisible.value = true;
+  }
+};
+
+// 🆕 删除凭证图片
+const deleteProofImages = async (cardId) => {
+  try {
+    // 确认删除
+    const confirmed = await new Promise((resolve) => {
+      Modal.confirm({
+        title: '确认删除',
+        content: '确定要删除该付款项的所有凭证吗？',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false)
+      });
+    });
+    
+    if (confirmed) {
+      // 释放预览URL
+      const images = cardProofImages.value[cardId];
+      if (images) {
+        images.forEach(img => {
+          if (img.url.startsWith('blob:')) {
+            URL.revokeObjectURL(img.url);
+          }
+        });
+      }
+      
+      // TODO: 调用API删除服务器上的凭证
+      // await orderPaymentAPI.deleteProof(paymentId);
+      
+      // 删除本地存储的凭证
+      delete cardProofImages.value[cardId];
+      
+      message.success('凭证删除成功');
+    }
+  } catch (error) {
+    console.error('删除凭证失败:', error);
+    message.error('删除凭证失败');
+  }
 };
 
 // 相机功能
@@ -2135,6 +2412,44 @@ const handleCancel = () => {
   font-style: italic;
 }
 
+/* 🆕 NPC角色配置容器样式 */
+.npc-roles-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.npc-role-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fafafa;
+  transition: all 0.3s ease;
+}
+
+.npc-role-item:hover {
+  border-color: #40a9ff;
+  background: #f6fbff;
+}
+
+.role-select {
+  flex-shrink: 0;
+  min-width: 150px;
+}
+
+.user-select {
+  flex: 1;
+  min-width: 200px;
+}
+
+.role-user-select {
+  width: 100%;
+}
+
 .full-width {
   grid-column: 1 / -1;
 }
@@ -2541,6 +2856,7 @@ const handleCancel = () => {
 .items-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-auto-rows: min-content;
   gap: 8px;
   max-height: 300px;
   overflow-y: auto;
@@ -2647,6 +2963,53 @@ const handleCancel = () => {
   color: #52c41a;
 }
 
+/* 🆕 个人付款卡片凭证显示 */
+.proof-images-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  padding: 4px 6px;
+  background: rgba(82, 196, 26, 0.05);
+  border-radius: 4px;
+  border: 1px solid rgba(82, 196, 26, 0.2);
+}
+
+.proof-indicator {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #52c41a;
+  font-weight: 600;
+}
+
+.proof-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.view-proof-btn,
+.delete-proof-btn {
+  padding: 2px 4px;
+  font-size: 10px;
+  color: #666;
+  border: none;
+  background: transparent;
+  min-width: auto;
+  height: auto;
+}
+
+.view-proof-btn:hover {
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.1);
+}
+
+.delete-proof-btn:hover {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.1);
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .summary-stats-compact {
@@ -2686,6 +3049,17 @@ const handleCancel = () => {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.proof-upload-btn {
+  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
+  color: white;
+  border: none;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .clear-selection-btn {
@@ -2702,6 +3076,13 @@ const handleCancel = () => {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.multi-select-hint {
+  font-size: 12px;
+  color: #ff7a45;
+  font-weight: 500;
+  font-style: italic;
 }
 
 /* 🆕 合并付款组样式 */
@@ -2722,6 +3103,7 @@ const handleCancel = () => {
 .merged-items-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-auto-rows: min-content;
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -2729,9 +3111,24 @@ const handleCancel = () => {
 /* 🆕 翻转卡片样式 */
 .merged-payment-card {
   position: relative;
-  height: 140px;
+  min-height: 120px;
   perspective: 1000px;
   cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.merged-payment-card:hover {
+  transform: translateY(-2px);
+}
+
+.merged-payment-card.selected {
+  transform: translateY(-3px);
+}
+
+.merged-payment-card.selected .card-front {
+  border-color: #1890ff;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+  background: linear-gradient(135deg, #e6f7ff 0%, #bae0ff 100%);
 }
 
 .card-front,
@@ -2774,7 +3171,7 @@ const handleCancel = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .merged-badge {
@@ -2790,7 +3187,7 @@ const handleCancel = () => {
 }
 
 .merged-name {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   color: #0050b3;
   text-align: right;
@@ -2800,20 +3197,89 @@ const handleCancel = () => {
 
 .merged-pricing {
   text-align: center;
-  margin: 16px 0;
+  margin: 8px 0;
 }
 
 .merged-amount {
-  font-size: 20px;
+  font-size: 12px;
   font-weight: 700;
   color: #52c41a;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .merged-discount {
-  font-size: 12px;
+  font-size: 10px;
   color: #f5222d;
   font-weight: 600;
+}
+
+/* 🆕 合并卡片选中指示器 */
+.merged-selection-indicator {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  width: 16px;
+  height: 16px;
+  background: #52c41a;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 🆕 合并卡片凭证显示 */
+.merged-proof-display {
+  text-align: center;
+  margin: 6px 0;
+}
+
+.proof-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #52c41a;
+  font-weight: 600;
+  background: rgba(82, 196, 26, 0.1);
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(82, 196, 26, 0.3);
+}
+
+/* 🆕 合并卡片凭证操作区域 */
+.merged-proof-actions {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.merged-proof-actions .view-proof-btn,
+.merged-proof-actions .delete-proof-btn {
+  padding: 2px 6px;
+  font-size: 12px;
+  color: #666;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  min-width: auto;
+  height: 20px;
+}
+
+.merged-proof-actions .view-proof-btn:hover {
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.1);
+}
+
+.merged-proof-actions .delete-proof-btn:hover {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.1);
 }
 
 .merged-actions {
@@ -2833,8 +3299,8 @@ const handleCancel = () => {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  font-size: 11px;
-  height: 24px;
+  font-size: 10px;
+  height: 22px;
 }
 
 .split-btn {
@@ -2847,8 +3313,8 @@ const handleCancel = () => {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  font-size: 11px;
-  height: 24px;
+  font-size: 10px;
+  height: 22px;
 }
 
 /* 卡片背面样式 */
@@ -2863,7 +3329,7 @@ const handleCancel = () => {
 
 .back-header h6 {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: #333;
   font-weight: 600;
 }
@@ -2902,7 +3368,7 @@ const handleCancel = () => {
 }
 
 .type-name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #333;
 }
@@ -2917,7 +3383,7 @@ const handleCancel = () => {
 }
 
 .type-amount {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #52c41a;
 }
@@ -2949,7 +3415,7 @@ const handleCancel = () => {
 }
 
 .total-line .total-amount {
-  font-size: 16px;
+  font-size: 12px;
   color: #52c41a;
 }
 

@@ -1,4 +1,4 @@
-// 订单表增强字段迁移 - node src/database/migrate-orders-enhanced.js
+// 未发布0730  订单表增强字段迁移 - node src/database/migrate-orders-enhanced.js
 require('dotenv').config();
 
 const pool = require('./connection');
@@ -43,6 +43,7 @@ const migrateOrdersEnhanced = async () => {
       
       // 密室NPC角色字段
       'ADD COLUMN IF NOT EXISTS escape_room_npc_roles TEXT', // 密室NPC角色（JSON字符串）
+      'ADD COLUMN IF NOT EXISTS escape_room_npc_roles_users TEXT', // 🆕 密室NPC角色用户关联（JSON字符串）
       
       // 🆕 多人支付相关字段
       'ADD COLUMN IF NOT EXISTS enable_multi_payment BOOLEAN DEFAULT false', // 是否启用多人支付

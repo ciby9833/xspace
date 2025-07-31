@@ -65,6 +65,8 @@ class OrderService extends BaseService {
       formatted.display_languages = this.getOrderDisplayLanguages(order);
       // 🆕 处理密室NPC角色字段
       formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
+      // 🆕 处理密室NPC角色用户关联字段
+      formatted.escape_room_npc_roles_users = this.parseJsonField(order.escape_room_npc_roles_users);
       // 🆕 处理密室支持语言字段格式
       formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
       
@@ -153,6 +155,8 @@ class OrderService extends BaseService {
       formatted.display_languages = this.getOrderDisplayLanguages(order);
       // 🆕 处理密室NPC角色字段
       formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
+      // 🆕 处理密室NPC角色用户关联字段
+      formatted.escape_room_npc_roles_users = this.parseJsonField(order.escape_room_npc_roles_users);
       // 🆕 处理密室支持语言字段格式
       formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
       
@@ -263,6 +267,44 @@ class OrderService extends BaseService {
     return [];
   }
 
+  // 🆕 处理NPC角色数据（提取角色名称列表）
+  processNpcRoles(npcRolesData) {
+    if (!npcRolesData) return null;
+    
+    // 如果是新格式（角色-用户关联数组）
+    if (Array.isArray(npcRolesData) && 
+        npcRolesData.length > 0 && 
+        npcRolesData[0].role && 
+        npcRolesData[0].user_id !== undefined) {
+      // 提取角色名称列表
+      const roleNames = npcRolesData.map(item => item.role);
+      return JSON.stringify(roleNames);
+    }
+    
+    // 如果是旧格式（纯角色名称数组）
+    if (Array.isArray(npcRolesData)) {
+      return JSON.stringify(npcRolesData);
+    }
+    
+    return null;
+  }
+
+  // 🆕 处理NPC角色用户关联数据
+  processNpcRoleUsers(npcRolesData) {
+    if (!npcRolesData) return null;
+    
+    // 如果是新格式（角色-用户关联数组）
+    if (Array.isArray(npcRolesData) && 
+        npcRolesData.length > 0 && 
+        npcRolesData[0].role && 
+        npcRolesData[0].user_id !== undefined) {
+      return JSON.stringify(npcRolesData);
+    }
+    
+    // 如果是旧格式，返回null
+    return null;
+  }
+
   // 🆕 通用JSON字段解析方法
   parseJsonField(field) {
     if (!field) return null;
@@ -310,6 +352,8 @@ class OrderService extends BaseService {
     formatted.display_languages = this.getOrderDisplayLanguages(order);
     // 🆕 处理密室NPC角色字段
     formatted.escape_room_npc_roles = this.parseEscapeRoomNpcRoles(order.escape_room_npc_roles);
+    // 🆕 处理密室NPC角色用户关联字段
+    formatted.escape_room_npc_roles_users = this.parseJsonField(order.escape_room_npc_roles_users);
     // 🆕 处理密室支持语言字段格式
     formatted.escape_room_supported_languages = this.parseJsonField(order.escape_room_supported_languages);
     
@@ -497,8 +541,9 @@ class OrderService extends BaseService {
       // 🆕 处理其他可能的字段映射
       unit_price: data.unit_price || data.total_amount || 0, // 🔧 修正：使用前端提交的unit_price
       is_free: data.free_pay === 'Free' ? true : false, // 转换Free/Pay为布尔值
-      // 🆕 密室NPC角色处理
-      escape_room_npc_roles: data.escape_room_npc_roles ? JSON.stringify(data.escape_room_npc_roles) : null,
+      // 🆕 密室NPC角色用户关联处理
+      escape_room_npc_roles: this.processNpcRoles(data.escape_room_npc_roles),
+      escape_room_npc_roles_users: this.processNpcRoleUsers(data.escape_room_npc_roles),
       // 🆕 新增财务字段处理
       original_price: data.original_price || data.unit_price || data.total_amount || 0,
       discount_price: data.discount_price || 0,
@@ -604,10 +649,13 @@ class OrderService extends BaseService {
       // 🆕 处理其他可能的字段映射
       unit_price: data.total_amount, // 单价等于总金额
       is_free: data.free_pay === 'Free' ? true : false, // 转换Free/Pay为布尔值
-      // 🆕 密室NPC角色处理
+      // 🆕 密室NPC角色用户关联处理
       escape_room_npc_roles: data.escape_room_npc_roles !== undefined ? 
-        (data.escape_room_npc_roles ? JSON.stringify(data.escape_room_npc_roles) : null) : 
+        this.processNpcRoles(data.escape_room_npc_roles) : 
         existingOrder.escape_room_npc_roles,
+      escape_room_npc_roles_users: data.escape_room_npc_roles !== undefined ? 
+        this.processNpcRoleUsers(data.escape_room_npc_roles) : 
+        existingOrder.escape_room_npc_roles_users,
       // 🆕 角色定价模板处理
       selected_role_templates: data.selected_role_templates !== undefined ? 
         data.selected_role_templates : existingOrder.selected_role_templates,
