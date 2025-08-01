@@ -399,14 +399,32 @@
                   </div>
                   <div class="role-selection">
                     <label>选择人数:</label>
-                    <a-input-number 
-                      v-model:value="selectedRoles[template.id]"
-                      :min="0"
-                      :max="getMaxSelectableForRole(template.id)"
-                      size="small"
-                      @change="(value) => handleRoleCountChange(template.id, value)"
-                      :placeholder="`最多${getMaxSelectableForRole(template.id)}人`"
-                    />
+                    <div class="touch-friendly-counter">
+                      <a-input-number 
+                        v-model:value="selectedRoles[template.id]"
+                        :min="0"
+                        :max="getMaxSelectableForRole(template.id)"
+                        size="large"
+                        class="role-count-input"
+                        @change="(value) => handleRoleCountChange(template.id, value)"
+                        :placeholder="`最多${getMaxSelectableForRole(template.id)}人`"
+                        :controls="true"
+                        :keyboard="true"
+                      />
+                      <div class="quick-select-buttons">
+                        <a-button 
+                          v-for="num in getQuickSelectNumbers(template.id)" 
+                          :key="num"
+                          size="small" 
+                          type="outline"
+                          class="quick-btn"
+                          @click="handleRoleCountChange(template.id, num)"
+                          :disabled="num > getMaxSelectableForRole(template.id)"
+                        >
+                          {{ num }}
+                        </a-button>
+                      </div>
+                    </div>
                     <small v-if="getMaxSelectableForRole(template.id) === 0" class="no-slots-hint">
                       暂无可选名额
                     </small>
@@ -507,24 +525,39 @@
                   </span>
                 </div>
                 <div class="merge-actions">
-                  <!-- 付款凭证上传按钮 - 只有选中1个卡片时显示 -->
-                  <a-upload
-                    v-if="getSelectedItemsCount() === 1"
-                    :file-list="[]"
-                    :before-upload="handleProofUpload"
-                    accept="image/*"
-                    :show-upload-list="false"
-                    multiple
-                  >
+                  <!-- 🆕 移动友好的付款凭证上传 - 只有选中1个卡片时显示 -->
+                  <div v-if="getSelectedItemsCount() === 1" class="mobile-proof-upload">
+                    <!-- 移动设备检测：优先显示相机按钮 -->
                     <a-button 
+                      v-if="isMobileDevice"
                       size="small"
                       :loading="uploadingProof"
-                      class="proof-upload-btn"
+                      class="camera-proof-btn"
+                      @click="openProofCamera"
                     >
                       <CameraOutlined />
-                      上传付款凭证
+                      拍照凭证
                     </a-button>
-                  </a-upload>
+                    
+                    <!-- 相册选择按钮 -->
+                    <a-upload
+                      :file-list="[]"
+                      :before-upload="handleProofUpload"
+                      accept="image/*"
+                      :capture="isMobileDevice ? 'environment' : false"
+                      :show-upload-list="false"
+                      multiple
+                    >
+                      <a-button 
+                        size="small"
+                        :loading="uploadingProof"
+                        class="album-proof-btn"
+                      >
+                        <FileImageOutlined />
+                        {{ isMobileDevice ? '选择照片' : '上传凭证' }}
+                      </a-button>
+                    </a-upload>
+                  </div>
                   
                   <a-button 
                     v-if="getSelectedItemsCount() > 0"
@@ -834,7 +867,7 @@
       </div>
 
       <!-- 付款凭证拍照卡片 -->
-      <div v-if="formData.free_pay === 'Pay'" class="form-card">
+      <div v-if="formData.free_pay === 'Pay' && !showSplitPayment" class="form-card">
         <div class="compact-header">
           <CameraOutlined class="header-icon" />
           <span class="header-title">付款凭证</span>
@@ -894,6 +927,27 @@
                     <DeleteOutlined />
                   </a-button>
                 </div>
+                
+                <!-- 🤖 AI识别状态指示器 -->
+                <div class="recognition-status">
+                  <a-spin 
+                    v-if="getGeneralRecognitionStatus(index).isLoading" 
+                    size="small" 
+                    class="recognition-loading"
+                  />
+                  <a-badge 
+                    v-else-if="getGeneralRecognitionStatus(index).hasResult" 
+                    status="success" 
+                    text="已识别"
+                    class="recognition-success"
+                  />
+                  <a-badge 
+                    v-else-if="getGeneralRecognitionStatus(index).hasError" 
+                    status="error" 
+                    text="识别失败"
+                    class="recognition-error"
+                  />
+                </div>
               </div>
             </div>
             <div class="images-info">
@@ -909,6 +963,164 @@
             </div>
             <p>暂无付款凭证图片</p>
             <p class="empty-hint">点击上方按钮拍摄或选择图片</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🤖 AI发票识别信息卡片 -->
+      <div v-if="(!showSplitPayment && paymentImages.length > 0) || (showSplitPayment && Object.keys(cardProofImages).length > 0)" class="form-card">
+        <div class="compact-header">
+          <BankOutlined class="header-icon" />
+          <span class="header-title">发票识别信息</span>
+          <span class="header-subtitle">AI自动识别的付款凭证信息</span>
+        </div>
+        
+        <!-- 常规付款凭证识别结果 -->
+        <div v-if="!showSplitPayment && paymentImages.length > 0" class="recognition-section">
+          <h4 class="section-title">常规付款凭证</h4>
+          <div class="recognition-results">
+            <div 
+              v-for="(image, index) in paymentImages" 
+              :key="`general-${index}`"
+              class="recognition-item"
+            >
+              <div class="recognition-header">
+                <img :src="image.url" :alt="`付款凭证${index + 1}`" class="recognition-thumbnail" />
+                <div class="recognition-meta">
+                  <span class="image-name">{{ image.name }}</span>
+                  <div class="recognition-status-text">
+                    <a-spin 
+                      v-if="getGeneralRecognitionStatus(index).isLoading" 
+                      size="small" 
+                    />
+                    <span v-else-if="getGeneralRecognitionStatus(index).hasResult" class="status-success">
+                      <CheckCircleOutlined /> 识别成功
+                    </span>
+                    <span v-else-if="getGeneralRecognitionStatus(index).hasError" class="status-error">
+                      <ExclamationCircleOutlined /> 识别失败
+                      <a-button 
+                        type="link" 
+                        size="small" 
+                        @click="retryGeneralAnalysis(index)"
+                        class="retry-btn"
+                      >
+                        重试
+                      </a-button>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 识别结果详情 -->
+              <div v-if="getGeneralRecognitionStatus(index).hasResult" class="recognition-details">
+                <div class="result-summary">
+                  {{ getGeneralRecognitionStatus(index).result.displayText }}
+                </div>
+                <div class="result-details">
+                  <div 
+                    v-for="detail in getGeneralRecognitionStatus(index).result.details" 
+                    :key="detail.label"
+                    class="detail-item"
+                    :class="{ 'highlight': detail.highlight }"
+                  >
+                    <span class="detail-icon">{{ detail.icon }}</span>
+                    <span class="detail-label">{{ detail.label }}:</span>
+                    <span class="detail-value">{{ detail.value }}</span>
+                  </div>
+                </div>
+                <div class="confidence-score">
+                  置信度: {{ getGeneralRecognitionStatus(index).result.confidence }}%
+                </div>
+              </div>
+              
+              <!-- 识别错误信息 -->
+              <div v-else-if="getGeneralRecognitionStatus(index).hasError" class="recognition-error-info">
+                <a-alert 
+                  :message="getGeneralRecognitionStatus(index).error" 
+                  type="error" 
+                  size="small" 
+                  show-icon 
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 拆分付款凭证识别结果 -->
+        <div v-if="showSplitPayment && Object.keys(cardProofImages).length > 0" class="recognition-section">
+          <h4 class="section-title">拆分付款凭证</h4>
+          <div class="recognition-results">
+            <div 
+              v-for="(cardId, cardIndex) in Object.keys(cardProofImages)" 
+              :key="`card-${cardId}`"
+              class="card-recognition-group"
+            >
+              <div class="card-title">付款项 {{ cardIndex + 1 }}</div>
+              <div 
+                v-for="image in cardProofImages[cardId]" 
+                :key="`${cardId}-${image.id}`"
+                class="recognition-item"
+              >
+                <div class="recognition-header">
+                  <img :src="image.url" :alt="image.name" class="recognition-thumbnail" />
+                  <div class="recognition-meta">
+                    <span class="image-name">{{ image.name }}</span>
+                    <div class="recognition-status-text">
+                      <a-spin 
+                        v-if="getRecognitionStatus(cardId, image.id).isLoading" 
+                        size="small" 
+                      />
+                      <span v-else-if="getRecognitionStatus(cardId, image.id).hasResult" class="status-success">
+                        <CheckCircleOutlined /> 识别成功
+                      </span>
+                      <span v-else-if="getRecognitionStatus(cardId, image.id).hasError" class="status-error">
+                        <ExclamationCircleOutlined /> 识别失败
+                        <a-button 
+                          type="link" 
+                          size="small" 
+                          @click="retryAnalysis(cardId, image.id)"
+                          class="retry-btn"
+                        >
+                          重试
+                        </a-button>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 识别结果详情 -->
+                <div v-if="getRecognitionStatus(cardId, image.id).hasResult" class="recognition-details">
+                  <div class="result-summary">
+                    {{ getRecognitionStatus(cardId, image.id).result.displayText }}
+                  </div>
+                  <div class="result-details">
+                    <div 
+                      v-for="detail in getRecognitionStatus(cardId, image.id).result.details" 
+                      :key="detail.label"
+                      class="detail-item"
+                      :class="{ 'highlight': detail.highlight }"
+                    >
+                      <span class="detail-icon">{{ detail.icon }}</span>
+                      <span class="detail-label">{{ detail.label }}:</span>
+                      <span class="detail-value">{{ detail.value }}</span>
+                    </div>
+                  </div>
+                  <div class="confidence-score">
+                    置信度: {{ getRecognitionStatus(cardId, image.id).result.confidence }}%
+                  </div>
+                </div>
+                
+                <!-- 识别错误信息 -->
+                <div v-else-if="getRecognitionStatus(cardId, image.id).hasError" class="recognition-error-info">
+                  <a-alert 
+                    :message="getRecognitionStatus(cardId, image.id).error" 
+                    type="error" 
+                    size="small" 
+                    show-icon 
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1012,6 +1224,85 @@
       <img :src="previewProofUrl" style="width: 100%" alt="付款凭证" />
     </a-modal>
 
+    <!-- 🆕 专门的付款凭证相机模态框 -->
+    <a-modal
+      v-model:open="proofCameraVisible"
+      title="拍摄付款凭证"
+      :footer="null"
+      width="95%"
+      :style="{ maxWidth: '600px' }"
+      @cancel="closeProofCamera"
+      :maskClosable="false"
+      :keyboard="false"
+      class="proof-camera-modal"
+    >
+      <div class="proof-camera-container">
+        <!-- 相机加载状态 -->
+        <div v-if="proofCameraLoading" class="camera-loading">
+          <a-spin size="large" tip="正在启动相机..." />
+        </div>
+        
+        <!-- 相机视频流 -->
+        <video 
+          ref="proofVideoRef" 
+          autoplay 
+          playsinline 
+          muted
+          class="proof-camera-video"
+          :style="{ display: proofCameraActive ? 'block' : 'none' }"
+        ></video>
+        
+        <!-- 隐藏的画布用于拍照 -->
+        <canvas 
+          ref="proofCanvasRef" 
+          class="proof-camera-canvas" 
+          style="display: none;"
+        ></canvas>
+        
+        <!-- 相机控制按钮 -->
+        <div class="proof-camera-controls">
+          <div class="capture-section">
+            <a-button 
+              type="primary" 
+              size="large" 
+              shape="circle"
+              @click="captureProofPhoto"
+              :disabled="!proofCameraActive || uploadingProof"
+              :loading="uploadingProof"
+              class="capture-proof-btn"
+            >
+              <CameraOutlined v-if="!uploadingProof" />
+            </a-button>
+            <div class="capture-text">{{ uploadingProof ? '上传中...' : '拍照上传' }}</div>
+          </div>
+          
+          <div class="close-section">
+            <a-button 
+              size="large" 
+              @click="closeProofCamera"
+              :disabled="uploadingProof"
+              class="close-proof-camera-btn"
+            >
+              <CloseOutlined />
+              关闭
+            </a-button>
+          </div>
+        </div>
+        
+        <!-- 移动设备优化提示 -->
+        <div class="camera-tips" v-if="isMobileDevice">
+          <div class="tip-item">
+            <InfoCircleOutlined />
+            <span>请确保光线充足，凭证清晰可见</span>
+          </div>
+          <div class="tip-item">
+            <InfoCircleOutlined />
+            <span>拍照后将自动上传并保存</span>
+          </div>
+        </div>
+      </div>
+    </a-modal>
+
 
   </div>
 </template>
@@ -1041,11 +1332,14 @@ import {
   ExclamationCircleOutlined,
   HomeOutlined,
   ScissorOutlined,
-  CloseOutlined
+  CloseOutlined,
+  FileImageOutlined
 } from '@ant-design/icons-vue'
 import { orderAPI, generatePaymentItemsSuggestion, createOrderWithMultiPayment } from '@/api/order'
 import { getUsersByStore } from '@/api/user'
 import { rolePricingTemplateAPI } from '@/api/multiPayment'
+// 🤖 Gemini AI 图片识别服务
+import { analyzePaymentReceiptFromBlob, formatAnalysisResult } from '@/api/gemini'
 
 // Props
 const props = defineProps({
@@ -1090,6 +1384,26 @@ const uploadingProof = ref(false)
 const proofPreviewVisible = ref(false)
 const previewProofUrl = ref('')
 const cardProofImages = ref({}) // 存储每个卡片的凭证图片 {cardId: [images]}
+
+// 🤖 Gemini AI 图片识别相关数据
+const recognitionLoading = ref({}) // 存储每个卡片每张图片的识别加载状态 {cardId: {imageId: boolean}}
+const recognitionResults = ref({}) // 存储识别结果 {cardId: {imageId: recognitionResult}}
+const recognitionErrors = ref({}) // 存储识别错误 {cardId: {imageId: errorMessage}}
+
+// 🤖 常规付款凭证识别相关数据
+const generalRecognitionLoading = ref({}) // 存储常规付款图片的识别加载状态 {imageIndex: boolean}
+const generalRecognitionResults = ref({}) // 存储常规付款图片的识别结果 {imageIndex: recognitionResult}
+const generalRecognitionErrors = ref({}) // 存储常规付款图片的识别错误 {imageIndex: errorMessage}
+
+// 🆕 移动设备检测和专门的凭证相机
+const isMobileDevice = ref(false)
+const proofCameraVisible = ref(false)
+const proofCameraLoading = ref(false)
+const proofCameraActive = ref(false)
+const proofVideoRef = ref()
+const proofCanvasRef = ref()
+const proofMediaStream = ref(null)
+const currentSelectedCardId = ref(null) // 当前选中要上传凭证的卡片ID
 
 // 相机相关
 const cameraVisible = ref(false)
@@ -1137,7 +1451,26 @@ onMounted(() => {
   initForm()
   loadGameHosts()
   loadRolePricingTemplates()
+  
+  // 🆕 检测移动设备
+  detectMobileDevice()
 })
+
+// 🆕 移动设备检测
+const detectMobileDevice = () => {
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera
+  
+  // 检测移动设备
+  const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent)
+  
+  // 检测触屏设备
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  
+  // 检测屏幕尺寸
+  const isSmallScreen = window.innerWidth <= 768
+  
+  isMobileDevice.value = isMobile || (isTouchDevice && isSmallScreen)
+}
 
 // 🆕 监听人数变化，自动重新计算总金额并验证角色选择
 watch(() => formData.player_count, (newPlayerCount, oldPlayerCount) => {
@@ -1511,6 +1844,25 @@ const getMaxSelectableForRole = (templateId) => {
   const maxSelectable = Math.max(0, maxPlayers - otherRolesCount);
   
   return maxSelectable;
+};
+
+// 🆕 获取快速选择按钮的数字选项（触控设备友好）
+const getQuickSelectNumbers = (templateId) => {
+  const maxSelectable = getMaxSelectableForRole(templateId);
+  const numbers = [];
+  
+  // 根据最大可选人数生成快速选择选项
+  if (maxSelectable >= 1) numbers.push(1);
+  if (maxSelectable >= 2) numbers.push(2);
+  if (maxSelectable >= 3) numbers.push(3);
+  if (maxSelectable >= 5) numbers.push(5);
+  
+  // 如果最大可选人数较大，添加更多选项
+  if (maxSelectable >= 10) {
+    numbers.push(10);
+  }
+  
+  return numbers.filter(num => num <= maxSelectable);
 };
 
 // 🆕 处理角色人数输入变化
@@ -1888,8 +2240,9 @@ const handleProofUpload = async (file) => {
       cardProofImages.value[selectedId] = [];
     }
     
+    const imageId = uploadedImage.id || Date.now();
     cardProofImages.value[selectedId].push({
-      id: uploadedImage.id || Date.now(),
+      id: imageId,
       url: uploadedImage.url, // 使用服务器返回的URL
       name: uploadedImage.name || file.name,
       size: uploadedImage.size || file.size,
@@ -1898,6 +2251,15 @@ const handleProofUpload = async (file) => {
     });
     
     message.success('付款凭证上传成功');
+    
+    // 🤖 自动启动Gemini AI识别
+    setTimeout(async () => {
+      try {
+        await analyzePaymentReceipt(selectedId, imageId, file);
+      } catch (error) {
+        console.error('自动识别失败:', error);
+      }
+    }, 500); // 延迟500ms启动识别，让用户先看到上传成功消息
     
     // 清除选中状态
     clearAllSelections();
@@ -1920,6 +2282,162 @@ const viewProofImages = (cardId) => {
     previewProofUrl.value = images[0].url;
     proofPreviewVisible.value = true;
   }
+};
+
+// 🤖 Gemini AI 图片识别功能
+const analyzePaymentReceipt = async (cardId, imageId, imageBlob) => {
+  try {
+    console.log('🤖 开始识别付款凭证:', { cardId, imageId });
+    
+    // 设置加载状态
+    if (!recognitionLoading.value[cardId]) {
+      recognitionLoading.value[cardId] = {};
+    }
+    recognitionLoading.value[cardId][imageId] = true;
+    
+    // 清除之前的错误
+    if (recognitionErrors.value[cardId] && recognitionErrors.value[cardId][imageId]) {
+      delete recognitionErrors.value[cardId][imageId];
+    }
+    
+    // 调用Gemini API识别
+    const response = await analyzePaymentReceiptFromBlob(imageBlob);
+    
+    if (response.success && response.data && response.data.analysis) {
+      // 格式化识别结果
+      const formattedResult = formatAnalysisResult(response.data.analysis);
+      
+      // 存储识别结果
+      if (!recognitionResults.value[cardId]) {
+        recognitionResults.value[cardId] = {};
+      }
+      recognitionResults.value[cardId][imageId] = formattedResult;
+      
+      console.log('✅ 付款凭证识别成功:', formattedResult);
+      message.success(`付款凭证识别成功 - ${formattedResult.displayText}`);
+      
+    } else {
+      throw new Error(response.message || '识别失败');
+    }
+    
+  } catch (error) {
+    console.error('❌ 付款凭证识别失败:', error);
+    
+    // 存储错误信息
+    if (!recognitionErrors.value[cardId]) {
+      recognitionErrors.value[cardId] = {};
+    }
+    recognitionErrors.value[cardId][imageId] = error.message || '识别失败';
+    
+    message.error(`付款凭证识别失败: ${error.message || '未知错误'}`);
+    
+  } finally {
+    // 清除加载状态
+    if (recognitionLoading.value[cardId]) {
+      recognitionLoading.value[cardId][imageId] = false;
+    }
+  }
+};
+
+// 🤖 重试识别
+const retryAnalysis = async (cardId, imageId) => {
+  const images = cardProofImages.value[cardId];
+  if (!images) return;
+  
+  const image = images.find(img => img.id === imageId);
+  if (!image) return;
+  
+  // 通过URL获取blob
+  try {
+    const response = await fetch(image.url);
+    const blob = await response.blob();
+    await analyzePaymentReceipt(cardId, imageId, blob);
+  } catch (error) {
+    console.error('重试获取图片失败:', error);
+    message.error('重试失败，请重新上传图片');
+  }
+};
+
+// 🤖 获取识别结果显示状态
+const getRecognitionStatus = (cardId, imageId) => {
+  const isLoading = recognitionLoading.value[cardId]?.[imageId] || false;
+  const result = recognitionResults.value[cardId]?.[imageId];
+  const error = recognitionErrors.value[cardId]?.[imageId];
+  
+  return {
+    isLoading,
+    hasResult: !!result,
+    hasError: !!error,
+    result,
+    error
+  };
+};
+
+// 🤖 常规付款凭证识别功能
+const analyzeGeneralPayment = async (imageIndex, imageBlob) => {
+  try {
+    console.log('🤖 开始识别常规付款凭证:', { imageIndex });
+    
+    // 设置加载状态
+    generalRecognitionLoading.value[imageIndex] = true;
+    
+    // 清除之前的错误
+    if (generalRecognitionErrors.value[imageIndex]) {
+      delete generalRecognitionErrors.value[imageIndex];
+    }
+    
+    // 调用Gemini API识别
+    const response = await analyzePaymentReceiptFromBlob(imageBlob);
+    
+    if (response.success && response.data && response.data.analysis) {
+      // 格式化识别结果
+      const formattedResult = formatAnalysisResult(response.data.analysis);
+      
+      // 存储识别结果
+      generalRecognitionResults.value[imageIndex] = formattedResult;
+      
+      console.log('✅ 常规付款凭证识别成功:', formattedResult);
+      message.success(`付款凭证识别成功 - ${formattedResult.displayText}`);
+      
+    } else {
+      throw new Error(response.message || '识别失败');
+    }
+    
+  } catch (error) {
+    console.error('❌ 常规付款凭证识别失败:', error);
+    
+    // 存储错误信息
+    generalRecognitionErrors.value[imageIndex] = error.message || '识别失败';
+    
+    message.error(`付款凭证识别失败: ${error.message || '未知错误'}`);
+    
+  } finally {
+    // 清除加载状态
+    generalRecognitionLoading.value[imageIndex] = false;
+  }
+};
+
+// 🤖 重试常规付款识别
+const retryGeneralAnalysis = async (imageIndex) => {
+  const image = paymentImages.value[imageIndex];
+  if (!image || !image.blob) return;
+  
+  await analyzeGeneralPayment(imageIndex, image.blob);
+};
+
+// 🤖 获取常规付款识别结果显示状态
+const getGeneralRecognitionStatus = (imageIndex) => {
+  const isLoading = generalRecognitionLoading.value[imageIndex] || false;
+  const result = generalRecognitionResults.value[imageIndex];
+  const error = generalRecognitionErrors.value[imageIndex];
+  
+  return {
+    isLoading,
+    hasResult: !!result,
+    hasError: !!error,
+    result,
+    error
+  };
 };
 
 // 🆕 删除凭证图片
@@ -1996,6 +2514,138 @@ const closeCamera = () => {
   cameraVisible.value = false
 }
 
+// 🆕 专门的付款凭证相机功能
+const openProofCamera = async () => {
+  // 获取当前选中的卡片ID
+  const selectedId = Array.from(selectedPaymentItems.value)[0];
+  if (!selectedId) {
+    message.error('请先选择要上传凭证的付款项');
+    return;
+  }
+  
+  currentSelectedCardId.value = selectedId;
+  proofCameraVisible.value = true;
+  proofCameraLoading.value = true;
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: 'environment', // 后置摄像头
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      } 
+    });
+    
+    await nextTick();
+    
+    if (proofVideoRef.value) {
+      proofVideoRef.value.srcObject = stream;
+      proofMediaStream.value = stream;
+      proofCameraActive.value = true;
+    }
+  } catch (error) {
+    console.error('无法访问相机:', error);
+    message.error('无法访问相机，请检查权限设置或尝试选择照片');
+  } finally {
+    proofCameraLoading.value = false;
+  }
+};
+
+const closeProofCamera = () => {
+  if (proofMediaStream.value) {
+    proofMediaStream.value.getTracks().forEach(track => track.stop());
+    proofMediaStream.value = null;
+  }
+  proofCameraActive.value = false;
+  proofCameraVisible.value = false;
+  currentSelectedCardId.value = null;
+};
+
+const captureProofPhoto = async () => {
+  if (!proofVideoRef.value || !proofCanvasRef.value || !currentSelectedCardId.value) return;
+  
+  try {
+    uploadingProof.value = true;
+    
+    const video = proofVideoRef.value;
+    const canvas = proofCanvasRef.value;
+    const context = canvas.getContext('2d');
+    
+    // 设置画布尺寸
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // 绘制视频帧到画布
+    context.drawImage(video, 0, 0);
+    
+    // 转换为blob并上传
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        message.error('拍照失败，请重试');
+        return;
+      }
+      
+      const timestamp = new Date().getTime();
+      const file = new File([blob], `proof_${timestamp}.jpg`, { type: 'image/jpeg' });
+      
+      // 创建FormData并上传到服务器
+      const formData = new FormData();
+      formData.append('images', file);
+      
+      try {
+        // 🆕 调用API上传凭证到服务器
+        const response = await orderAPI.uploadImages(formData);
+        
+        if (!response.data || !response.data.images || response.data.images.length === 0) {
+          throw new Error('图片上传失败，服务器未返回有效的图片信息');
+        }
+        
+        const uploadedImage = response.data.images[0];
+        
+        // 存储到对应卡片的凭证数组中
+        if (!cardProofImages.value[currentSelectedCardId.value]) {
+          cardProofImages.value[currentSelectedCardId.value] = [];
+        }
+        
+        const imageId = uploadedImage.id || Date.now();
+        cardProofImages.value[currentSelectedCardId.value].push({
+          id: imageId,
+          url: uploadedImage.url,
+          name: uploadedImage.name || file.name,
+          size: uploadedImage.size || file.size,
+          type: 'payment_proof',
+          server_path: uploadedImage.path
+        });
+        
+        message.success('付款凭证拍照上传成功');
+        
+        // 🤖 自动启动Gemini AI识别
+        setTimeout(async () => {
+          try {
+            await analyzePaymentReceipt(currentSelectedCardId.value, imageId, blob);
+          } catch (error) {
+            console.error('自动识别失败:', error);
+          }
+        }, 500); // 延迟500ms启动识别
+        
+        // 清除选中状态并关闭相机
+        clearAllSelections();
+        closeProofCamera();
+        
+      } catch (error) {
+        console.error('上传凭证失败:', error);
+        message.error('上传凭证失败: ' + (error.message || '未知错误'));
+      }
+    }, 'image/jpeg', 0.85);
+    
+  } catch (error) {
+    console.error('拍照失败:', error);
+    message.error('拍照失败，请重试');
+  } finally {
+    uploadingProof.value = false;
+  }
+};
+
 const capturePhoto = () => {
   if (!videoRef.value || !canvasRef.value) return
   
@@ -2011,9 +2661,10 @@ const capturePhoto = () => {
   context.drawImage(video, 0, 0)
   
   // 转换为blob
-  canvas.toBlob((blob) => {
+  canvas.toBlob(async (blob) => {
     const url = URL.createObjectURL(blob)
     const timestamp = new Date().getTime()
+    const imageIndex = paymentImages.value.length;
     
     paymentImages.value.push({
       url: url,
@@ -2024,6 +2675,15 @@ const capturePhoto = () => {
     
     message.success('拍照成功')
     closeCamera()
+    
+    // 🤖 自动启动Gemini AI识别
+    setTimeout(async () => {
+      try {
+        await analyzeGeneralPayment(imageIndex, blob);
+      } catch (error) {
+        console.error('自动识别失败:', error);
+      }
+    }, 500); // 延迟500ms启动识别
   }, 'image/jpeg', 0.8)
 }
 
@@ -2042,6 +2702,7 @@ const handleFileUpload = (file) => {
   }
   
   const url = URL.createObjectURL(file)
+  const imageIndex = paymentImages.value.length;
   paymentImages.value.push({
     url: url,
     blob: file,
@@ -2050,6 +2711,16 @@ const handleFileUpload = (file) => {
   })
   
   message.success('图片添加成功')
+  
+  // 🤖 自动启动Gemini AI识别
+  setTimeout(async () => {
+    try {
+      await analyzeGeneralPayment(imageIndex, file);
+    } catch (error) {
+      console.error('自动识别失败:', error);
+    }
+  }, 500); // 延迟500ms启动识别
+  
   return false // 阻止自动上传
 }
 
@@ -2115,6 +2786,18 @@ const validateForm = () => {
   if (!formData.booking_type) {
     message.error('请选择预订类型')
     return false
+  }
+  
+  // 🆕 验证NPC角色配置（如果勾选了任何NPC角色，必须选择人员）
+  const hasSelectedNpcRoles = Object.keys(selectedNpcRoles.value).some(role => selectedNpcRoles.value[role])
+  if (hasSelectedNpcRoles) {
+    const unassignedRoles = Object.keys(selectedNpcRoles.value).filter(role => 
+      selectedNpcRoles.value[role] && !npcRoleUsers.value[role]
+    )
+    if (unassignedRoles.length > 0) {
+      message.error(`请为已选择的NPC角色"${unassignedRoles.join('、')}"指定扮演人员`)
+      return false
+    }
   }
   
   // 🆕 验证角色人数总和不能超过游戏人数
@@ -2719,7 +3402,7 @@ const handleCancel = () => {
 
 .role-selection {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
@@ -2727,6 +3410,111 @@ const handleCancel = () => {
   font-size: 13px;
   color: #666;
   margin: 0;
+}
+
+/* 🆕 触控友好的计数器容器 */
+.touch-friendly-counter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 🆕 角色人数输入框（触控优化） */
+.role-count-input {
+  width: 120px !important;
+  
+  /* 触控设备优化 */
+  :deep(.ant-input-number-input) {
+    height: 40px !important;
+    font-size: 16px !important;
+    text-align: center;
+    border-radius: 8px;
+    
+    /* 防止触控设备上的缩放 */
+    @media (max-width: 768px) {
+      font-size: 16px !important; /* 防止iOS缩放 */
+      touch-action: manipulation;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+  }
+  
+  /* 增大加减按钮的点击区域 */
+  :deep(.ant-input-number-handler) {
+    width: 32px !important;
+    height: 20px !important;
+    border-radius: 4px;
+    
+    &:hover {
+      background-color: #e6f7ff;
+    }
+    
+    &:active {
+      background-color: #bae7ff;
+    }
+  }
+  
+  /* 触控设备上的按钮样式 */
+  @media (max-width: 768px) {
+    :deep(.ant-input-number-handler) {
+      width: 40px !important;
+      height: 24px !important;
+      
+      .ant-input-number-handler-up-inner,
+      .ant-input-number-handler-down-inner {
+        font-size: 14px;
+        font-weight: bold;
+      }
+    }
+  }
+}
+
+/* 🆕 快速选择按钮组 */
+.quick-select-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  
+  .quick-btn {
+    min-width: 36px;
+    height: 32px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border-color: #1890ff;
+      color: #1890ff;
+    }
+    
+    &:active:not(:disabled) {
+      transform: translateY(0);
+      background-color: #e6f7ff;
+    }
+    
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* 触控设备优化 */
+    @media (max-width: 768px) {
+      min-width: 44px; /* 符合触控最小44px标准 */
+      height: 40px;
+      font-size: 14px;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      
+      &:active:not(:disabled) {
+        background-color: #1890ff;
+        color: white;
+      }
+    }
+  }
 }
 
 .role-selection :deep(.ant-input-number) {
@@ -3728,6 +4516,310 @@ const handleCancel = () => {
   font-size: 14px;
 }
 
+/* 🆕 移动友好的付款凭证上传样式 */
+.mobile-proof-upload {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+  }
+}
+
+.camera-proof-btn {
+  background: linear-gradient(45deg, #1890ff, #40a9ff);
+  border: none;
+  color: white;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  
+  &:hover {
+    background: linear-gradient(45deg, #096dd9, #1890ff);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(24, 144, 255, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  /* 移动设备优化 */
+  @media (max-width: 768px) {
+    height: 38px;
+    font-size: 13px;
+    min-width: auto;
+    width: 100%;
+    border-radius: 6px;
+    
+    /* 触觉反馈 */
+    &:active {
+      background: linear-gradient(45deg, #0050b3, #096dd9);
+    }
+  }
+}
+
+.album-proof-btn {
+  border-color: #d9d9d9;
+  color: #595959;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    border-color: #40a9ff;
+    color: #1890ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  /* 移动设备优化 */
+  @media (max-width: 768px) {
+    height: 38px;
+    font-size: 13px;
+    min-width: auto;
+    width: 100%;
+    border-radius: 6px;
+    
+    &:active {
+      background-color: #f0f0f0;
+    }
+  }
+}
+
+/* 🆕 专门的付款凭证相机模态框样式 */
+.proof-camera-modal {
+  /* 移动设备全屏优化 */
+  @media (max-width: 768px) {
+    .ant-modal {
+      max-width: 100vw !important;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+    }
+    
+    .ant-modal-content {
+      height: 100vh;
+      border-radius: 0 !important;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .ant-modal-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+    }
+  }
+}
+
+.proof-camera-container {
+  text-align: center;
+  position: relative;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  
+  @media (max-width: 768px) {
+    min-height: 60vh;
+    height: 100%;
+  }
+}
+
+.camera-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  
+  @media (max-width: 768px) {
+    min-height: 40vh;
+  }
+}
+
+.proof-camera-video {
+  width: 100%;
+  max-width: 500px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  background-color: #000;
+  flex: 1;
+  object-fit: cover;
+  
+  @media (max-width: 768px) {
+    max-width: 100%;
+    border-radius: 8px;
+    height: auto;
+    min-height: 50vh;
+  }
+}
+
+.proof-camera-controls {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  
+  @media (max-width: 768px) {
+    margin-top: 16px;
+    padding: 0 12px;
+    flex-direction: row;
+    gap: 20px;
+  }
+}
+
+.capture-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  
+  @media (max-width: 768px) {
+    flex: auto;
+  }
+}
+
+.capture-proof-btn {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, #52c41a, #73d13d);
+  border: 3px solid white;
+  box-shadow: 0 4px 16px rgba(82, 196, 26, 0.4);
+  font-size: 24px;
+  transition: all 0.3s ease;
+  
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, #389e0d, #52c41a);
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(82, 196, 26, 0.6);
+  }
+  
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+  
+  &:disabled {
+    opacity: 0.7;
+    background: #d9d9d9;
+    cursor: not-allowed;
+  }
+  
+  @media (max-width: 768px) {
+    width: 70px;
+    height: 70px;
+    font-size: 26px;
+    
+    /* 增强触觉反馈 */
+    &:active:not(:disabled) {
+      background: linear-gradient(135deg, #237804, #389e0d);
+      transform: scale(0.9);
+    }
+  }
+}
+
+.capture-text {
+  font-size: 14px;
+  color: #595959;
+  font-weight: 500;
+  
+  @media (max-width: 768px) {
+    font-size: 13px;
+  }
+}
+
+.close-section {
+  display: flex;
+  align-items: center;
+  
+  @media (max-width: 768px) {
+    flex: auto;
+  }
+}
+
+.close-proof-camera-btn {
+  min-width: 80px;
+  height: 40px;
+  font-size: 14px;
+  border-radius: 8px;
+  border-color: #d9d9d9;
+  color: #595959;
+  transition: all 0.3s ease;
+  
+  &:hover:not(:disabled) {
+    border-color: #ff4d4f;
+    color: #ff4d4f;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(255, 77, 79, 0.2);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  
+  @media (max-width: 768px) {
+    min-width: 70px;
+    height: 42px;
+    font-size: 13px;
+    
+    &:active:not(:disabled) {
+      background-color: #fff1f0;
+    }
+  }
+}
+
+.camera-tips {
+  margin-top: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, #e6f7ff, #f6ffed);
+  border-radius: 8px;
+  border: 1px solid #b7eb8f;
+  
+  @media (max-width: 768px) {
+    margin-top: 12px;
+    padding: 10px;
+    font-size: 13px;
+  }
+}
+
+.tip-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #52c41a;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+  
+  span {
+    color: #262626;
+    line-height: 1.4;
+  }
+  
+  @media (max-width: 768px) {
+    gap: 6px;
+    font-size: 12px;
+    margin-bottom: 4px;
+    
+    span {
+      font-size: 12px;
+    }
+  }
+}
+
 /* 操作按钮 */
 .action-buttons {
   display: flex;
@@ -3794,6 +4886,226 @@ const handleCancel = () => {
   .photo-section,
   .textarea-container {
     padding: 12px;
+  }
+}
+
+/* 🤖 AI识别结果样式 */
+.recognition-status {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.recognition-loading {
+  color: #1890ff;
+}
+
+.recognition-success .ant-badge-status-text {
+  color: #52c41a;
+  font-weight: 500;
+}
+
+.recognition-error .ant-badge-status-text {
+  color: #ff4d4f;
+  font-weight: 500;
+}
+
+.recognition-section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.recognition-results {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recognition-item {
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.recognition-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recognition-thumbnail {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #d9d9d9;
+}
+
+.recognition-meta {
+  flex: 1;
+}
+
+.image-name {
+  display: block;
+  font-weight: 500;
+  color: #262626;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.recognition-status-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.status-success {
+  color: #52c41a;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-error {
+  color: #ff4d4f;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.retry-btn {
+  padding: 0;
+  height: auto;
+  line-height: 1;
+  font-size: 12px;
+}
+
+.recognition-details {
+  margin-top: 12px;
+}
+
+.result-summary {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1890ff;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 6px;
+}
+
+.result-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #fff;
+  border-radius: 4px;
+  border: 1px solid #e8e8e8;
+  font-size: 13px;
+}
+
+.detail-item.highlight {
+  background: #fff7e6;
+  border-color: #ffd591;
+  font-weight: 600;
+}
+
+.detail-icon {
+  font-size: 14px;
+  min-width: 16px;
+}
+
+.detail-label {
+  color: #666;
+  min-width: 60px;
+}
+
+.detail-value {
+  color: #262626;
+  font-weight: 500;
+  flex: 1;
+}
+
+.confidence-score {
+  font-size: 12px;
+  color: #666;
+  text-align: right;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  border: 1px solid #e8e8e8;
+}
+
+.recognition-error-info {
+  margin-top: 8px;
+}
+
+.card-recognition-group {
+  border-left: 3px solid #1890ff;
+  padding-left: 16px;
+  margin-bottom: 20px;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1890ff;
+  margin-bottom: 12px;
+  padding: 4px 8px;
+  background: #e6f7ff;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .result-details {
+    grid-template-columns: 1fr;
+  }
+  
+  .recognition-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .recognition-thumbnail {
+    width: 80px;
+    height: 80px;
+  }
+  
+  .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  
+  .detail-label {
+    min-width: auto;
+    font-size: 12px;
   }
 }
 </style> 

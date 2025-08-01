@@ -129,6 +129,14 @@
           />
         </a-form-item>
 
+        <a-form-item label="日期范围">
+          <a-range-picker
+            v-model:value="filterForm.dateRange"
+            format="YYYY-MM-DD"
+            style="width: 220px"
+          />
+        </a-form-item>
+
         <a-form-item>
           <a-button type="primary" html-type="submit">
             <SearchOutlined />
@@ -796,6 +804,7 @@ import { useAuthStore } from '@/stores/auth'
 import { orderAPI } from '@/api/order'
 import { storeAPI } from '@/api/store'
 import OrderFormModal from '@/components/order/OrderFormModal.vue'
+import dayjs from 'dayjs'
 import {
   PlusOutlined,
   SearchOutlined,
@@ -830,7 +839,8 @@ const filterForm = reactive({
   customer_search: null,
   // 🆕 新增筛选字段
   payment_mode: null, // single/multi
-  has_role_discount: null // true/false
+  has_role_discount: null, // true/false
+  dateRange: [dayjs().startOf('day'), dayjs().endOf('day')] // 默认当日
 })
 
 // 分页参数
@@ -1060,6 +1070,12 @@ const buildFilterParams = () => {
     }
   }
   
+  // 🆕 日期范围筛选参数
+  if (filterForm.dateRange && filterForm.dateRange.length === 2) {
+    params.start_date = filterForm.dateRange[0]?.format('YYYY-MM-DD')
+    params.end_date = filterForm.dateRange[1]?.format('YYYY-MM-DD')
+  }
+  
   return params
 }
 
@@ -1072,7 +1088,11 @@ const handleFilter = () => {
 // 重置筛选
 const resetFilter = () => {
   Object.keys(filterForm).forEach(key => {
-    filterForm[key] = null
+    if (key === 'dateRange') {
+      filterForm[key] = [dayjs().startOf('day'), dayjs().endOf('day')] // 重置为当日
+    } else {
+      filterForm[key] = null
+    }
   })
   pagination.current = 1 // 重置时重置到第一页
   loadOrderList()

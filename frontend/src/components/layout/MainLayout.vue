@@ -223,7 +223,13 @@ const authStore = useAuthStore()
 
 const appTitle = import.meta.env.VITE_APP_TITLE
 
-const collapsed = ref(false)
+// 🆕 从本地存储读取侧边栏折叠状态，默认为false（展开）
+const getSavedCollapsedState = () => {
+  const saved = localStorage.getItem('sidebar-collapsed')
+  return saved ? JSON.parse(saved) : false
+}
+
+const collapsed = ref(getSavedCollapsedState())
 const selectedKeys = ref([route.path])
 
 // 计算侧边栏宽度
@@ -231,9 +237,10 @@ const sidebarWidth = computed(() => {
   return collapsed.value ? 80 : 200
 })
 
-// 切换折叠状态
+// 🆕 切换折叠状态并保存到本地存储
 const toggleCollapsed = () => {
   collapsed.value = !collapsed.value
+  localStorage.setItem('sidebar-collapsed', JSON.stringify(collapsed.value))
 }
 
 // 监听路由变化，更新选中的菜单

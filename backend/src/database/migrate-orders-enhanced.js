@@ -1,4 +1,4 @@
-// 未发布0730  订单表增强字段迁移 - node src/database/migrate-orders-enhanced.js
+// 已发布0730  订单表增强字段迁移 - node src/database/migrate-orders-enhanced.js
 require('dotenv').config();
 
 const pool = require('./connection');
