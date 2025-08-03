@@ -1,4 +1,5 @@
-场景一：
+场景一：Request URL
+http://localhost:3000/api/order/multi-payment
 {
     "success": true,
     "message": "多笔付款订单创建成功",
@@ -505,5 +506,6 @@
     "timestamp": "2025-08-01T03:17:57.573Z"
 }
 
-场景二：
+场景二：Request URL
+http://localhost:3000/api/order
 {"order_type":"密室","store_id":"18d25691-6640-42ab-84cb-f0f6ef82203c","room_id":"e6900ec1-b147-4d5f-a7c5-38f982c9d1b9","order_date":"2025-08-01","start_time":"11:00","end_time":"11:30","escape_room_id":"b0a9b2e0-1719-4f15-ac12-946da712cf79","escape_room_name":"咒怨 English","customer_name":"单个下单","customer_phone":null,"player_count":5,"language":"IND","game_host_id":"07b4d6ea-f249-4f14-8569-1d515c2cc9c1","pic_id":null,"pic_payment":"","free_pay":"Pay","payment_status":"Not Yet","booking_type":"Booking","payment_method":"Bank Transfer","promo_quantity":null,"total_amount":940000,"notes":"","images":[{"url":"/uploads/orders/order-1754018467299-ca716589-cb82-4b6a-85bc-745ee878b969.png","name":"image (5).png","type":"proof","sort_order":0}],"is_group_booking":false,"include_cctv":false,"include_photos":false,"escape_room_npc_roles":[{"role":"幽默","user_id":"07b4d6ea-f249-4f14-8569-1d515c2cc9c1"}],"unit_price":"200000.00","original_price":"200000.00","prepaid_amount":0,"remaining_amount":940000,"selected_role_templates":[{"template_id":"51196f94-4337-40ce-b5b9-f9e734f9a777","player_count":2}],"status":"confirmed"}

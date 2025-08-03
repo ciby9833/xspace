@@ -1,5 +1,6 @@
 //支付记录控制器
 const orderPaymentService = require('../services/orderPaymentService');
+const orderService = require('../services/orderService');
 const { validationResult } = require('express-validator');
 
 class OrderPaymentController {
@@ -661,6 +662,103 @@ class OrderPaymentController {
       res.status(500).json({
         success: false,
         error: '上传支付凭证失败',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 🤖 手动触发AI识别订单付款凭证
+  async recognizeOrderPaymentProof(req, res) {
+    try {
+      const { orderId } = req.params;
+      
+      if (!orderId) {
+        return res.status(400).json({
+          success: false,
+          error: '订单ID不能为空',
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // 异步执行AI识别
+      setImmediate(async () => {
+        try {
+          await orderService.recognizeOrderPaymentProof(orderId, req.user);
+        } catch (error) {
+          console.error('❌ 手动AI识别失败:', error);
+        }
+      });
+      
+      res.json({
+        success: true,
+        message: 'AI识别任务已启动',
+        data: { order_id: orderId },
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('启动AI识别错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '启动AI识别失败',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 🤖 获取订单AI识别结果
+  async getOrderRecognitionResult(req, res) {
+    try {
+      const { orderId } = req.params;
+      
+      if (!orderId) {
+        return res.status(400).json({
+          success: false,
+          error: '订单ID不能为空',
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      const result = await orderPaymentService.getOrderRecognitionResult(orderId, req.user);
+      
+      res.json({
+        success: true,
+        message: '获取AI识别结果成功',
+        data: result,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('获取AI识别结果错误:', error);
+      
+      if (error.message === '权限不足') {
+        return res.status(403).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      if (error.message === '订单不存在') {
+        return res.status(404).json({
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      res.status(500).json({
+        success: false,
+        error: '获取AI识别结果失败',
         timestamp: new Date().toISOString()
       });
     }

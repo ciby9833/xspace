@@ -208,6 +208,23 @@ class OrderController {
 
       const result = await orderService.create(req.body, req.user);
       
+      // 🤖 异步启动AI识别（不阻塞响应）
+      // 注意：orderService.create返回的是订单ID字符串，不是对象
+      if (result) {
+        console.log('🚀 准备启动AI识别任务，订单ID:', result);
+        setImmediate(async () => {
+          console.log('🤖 开始执行AI识别任务，订单ID:', result);
+          try {
+            await orderService.recognizeOrderPaymentProof(result, req.user);
+            console.log('✅ AI识别任务完成，订单ID:', result);
+          } catch (error) {
+            console.error('❌ 异步AI识别失败，订单ID:', result, '错误:', error);
+          }
+        });
+      } else {
+        console.log('⚠️  跳过AI识别：订单创建结果无效', { result });
+      }
+      
       res.json({
         success: true,
         message: '创建订单成功',
@@ -258,6 +275,26 @@ class OrderController {
       console.log('🚀 开始创建多笔付款订单:', req.body);
       
       const result = await orderService.createOrderWithMultiPayment(req.body, req.user);
+      
+      // 🤖 异步启动AI识别（不阻塞响应）
+      if (result && result.order && result.order.id) {
+        console.log('🚀 准备启动多笔支付AI识别任务，订单ID:', result.order.id);
+        setImmediate(async () => {
+          console.log('🤖 开始执行多笔支付AI识别任务，订单ID:', result.order.id);
+          try {
+            await orderService.recognizeOrderPaymentProof(result.order.id, req.user);
+            console.log('✅ 多笔支付AI识别任务完成，订单ID:', result.order.id);
+          } catch (error) {
+            console.error('❌ 多笔支付异步AI识别失败，订单ID:', result.order.id, '错误:', error);
+          }
+        });
+      } else {
+        console.log('⚠️  跳过多笔支付AI识别：订单创建结果无效', { 
+          result: !!result, 
+          order: !!result?.order, 
+          id: result?.order?.id 
+        });
+      }
       
       res.json({
         success: true,

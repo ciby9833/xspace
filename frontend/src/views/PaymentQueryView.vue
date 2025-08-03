@@ -99,7 +99,7 @@
         :data-source="orders"
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 1200 }"
+        :scroll="{ x: 1380 }"
         row-key="id"
         @change="handleTableChange"
       >
@@ -152,6 +152,33 @@
               </a-tag>
               <div v-if="record.enable_multi_payment" class="multi-payment-tag">
                 <a-tag color="purple" size="small">多笔支付</a-tag>
+              </div>
+              <!-- 🤖 AI识别状态显示 -->
+              <div class="ai-recognition-status" style="margin-top: 4px;">
+                <a-tag 
+                  v-if="record.ai_recognition_status" 
+                  :color="getAiRecognitionColor(record.ai_recognition_status)"
+                  size="small"
+                >
+                  {{ getAiRecognitionText(record.ai_recognition_status) }}
+                </a-tag>
+              </div>
+            </div>
+          </template>
+
+          <!-- 🤖 AI识别结果 -->
+          <template v-if="column.key === 'ai_recognition_info'">
+            <div class="ai-recognition-info">
+              <div v-if="record.ai_total_recognized_amount && record.ai_total_recognized_amount > 0" class="ai-amount">
+                <span class="amount-label">AI识别:</span>
+                <span class="amount-value">Rp {{ formatCurrency(record.ai_total_recognized_amount) }}</span>
+              </div>
+              <div v-if="record.ai_total_confidence_score && record.ai_total_confidence_score > 0" class="ai-confidence">
+                <span class="confidence-label">置信度:</span>
+                <span class="confidence-value">{{ record.ai_total_confidence_score }}%</span>
+              </div>
+              <div v-if="!record.ai_total_recognized_amount || record.ai_total_recognized_amount === 0" class="no-ai-data">
+                <a-tag color="default" size="small">暂无识别</a-tag>
               </div>
             </div>
           </template>
@@ -212,6 +239,21 @@
               </a-descriptions-item>
               <a-descriptions-item label="玩家人数">
                 {{ currentOrder?.player_count }}人
+              </a-descriptions-item>
+              <!-- 🤖 AI识别总金额信息 -->
+              <a-descriptions-item label="AI识别总金额" v-if="currentOrder?.ai_total_recognized_amount && currentOrder.ai_total_recognized_amount > 0">
+                <span style="color: #52c41a; font-weight: 500;">
+                  Rp {{ formatCurrency(currentOrder.ai_total_recognized_amount) }}
+                </span>
+                <span v-if="currentOrder?.ai_total_confidence_score" style="color: #1890ff; font-size: 12px; margin-left: 8px;">
+                  (置信度: {{ currentOrder.ai_total_confidence_score }}%)
+                </span>
+              </a-descriptions-item>
+              <!-- 🤖 AI识别摘要信息 -->
+              <a-descriptions-item label="AI识别摘要" v-if="currentOrder?.ai_recognition_summary" :span="3">
+                <span style="color: #666; font-size: 12px;">
+                  {{ currentOrder.ai_recognition_summary }}
+                </span>
               </a-descriptions-item>
             </a-descriptions>
           </div>
@@ -321,6 +363,25 @@
                     </div>
                   </template>
 
+                  <!-- 🤖 AI识别金额 -->
+                  <template v-if="column.key === 'ai_amount'">
+                    <div class="ai-amount-cell">
+                      <div v-if="record.ai_recognition_result && getAiRecognizedAmount(record)" class="ai-amount-value">
+                        <span class="ai-label">AI:</span>
+                        <span class="amount-text">Rp {{ formatCurrency(getAiRecognizedAmount(record)) }}</span>
+                      </div>
+                      <div v-else-if="record.ai_recognition_status === 'success'" class="ai-amount-empty">
+                        <span class="ai-label">AI:</span>
+                        <span class="no-amount">无金额</span>
+                      </div>
+                      <div v-else class="ai-amount-pending">
+                        <a-tag :color="getAiRecognitionColor(record.ai_recognition_status || 'pending')" size="small">
+                          {{ getAiRecognitionText(record.ai_recognition_status || 'pending') }}
+                        </a-tag>
+                      </div>
+                    </div>
+                  </template>
+
                   <template v-if="column.key === 'payment_method'">
                     <a-tag :color="getPaymentMethodColor(record.payment_method)">
                       {{ record.payment_method }}
@@ -362,11 +423,219 @@
                     </div>
                   </template>
 
+                  <template v-if="column.key === 'ai_recognition'">
+                    <div class="ai-recognition-info">
+                      <a-tag 
+                        :color="getAiRecognitionColor(record.ai_recognition_status || 'pending')"
+                        size="small"
+                      >
+                        {{ getAiRecognitionText(record.ai_recognition_status || 'pending') }}
+                      </a-tag>
+                      <div v-if="record.ai_recognition_confidence" class="confidence-score">
+                        置信度: {{ record.ai_recognition_confidence }}%
+                      </div>
+                    </div>
+                  </template>
+
                   <template v-if="column.key === 'payment_date'">
                     {{ formatDateTime(record.payment_date) }}
                   </template>
                 </template>
               </a-table>
+            </a-tab-pane>
+
+            <!-- 🤖 AI识别结果 -->
+            <a-tab-pane key="ai_recognition" tab="AI识别结果">
+              <div class="ai-recognition-results">
+                <a-spin :spinning="aiRecognitionLoading">
+                  <!-- 订单AI识别结果（单笔支付） -->
+                  <div v-if="!currentOrder?.enable_multi_payment" class="order-recognition-section">
+                    <h4>订单AI识别结果</h4>
+                    <a-card size="small" style="margin-bottom: 16px;">
+                      <div class="recognition-status">
+                        <a-descriptions :column="2" size="small">
+                          <a-descriptions-item label="识别状态">
+                            <a-tag :color="getAiRecognitionColor(aiRecognitionData?.order_recognition?.status || 'pending')">
+                              {{ getAiRecognitionText(aiRecognitionData?.order_recognition?.status || 'pending') }}
+                            </a-tag>
+                          </a-descriptions-item>
+                          <a-descriptions-item label="置信度" v-if="aiRecognitionData?.order_recognition?.confidence">
+                            {{ aiRecognitionData.order_recognition.confidence }}%
+                          </a-descriptions-item>
+                          <a-descriptions-item label="识别时间" v-if="aiRecognitionData?.order_recognition?.recognized_at">
+                            {{ formatDateTime(aiRecognitionData.order_recognition.recognized_at) }}
+                          </a-descriptions-item>
+                        </a-descriptions>
+                        
+                        <!-- 识别结果详情 -->
+                        <div v-if="aiRecognitionData?.order_recognition?.result" class="recognition-details">
+                          <h5>识别详情：</h5>
+                          <div v-for="(result, index) in aiRecognitionData.order_recognition.result" :key="index" class="result-item">
+                            <a-card size="small" style="margin-bottom: 8px;">
+                              <div class="result-header">
+                                <strong>{{ result.image_name }}</strong>
+                                <a-tag v-if="result.recognition_result?.success" color="green">识别成功</a-tag>
+                                <a-tag v-else color="red">识别失败</a-tag>
+                              </div>
+                              <div v-if="result.recognition_result?.success" class="result-content">
+                                <!-- 🔧 改进：显示关键信息而不是原始JSON -->
+                                <div class="recognition-summary">
+                                  <a-descriptions :column="2" size="small">
+                                    <a-descriptions-item label="银行">
+                                      {{ result.recognition_result.bank_name || '未识别' }}
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="金额">
+                                      <span class="amount-highlight">
+                                        Rp {{ formatCurrency(result.recognition_result.amount || 0) }}
+                                      </span>
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="交易类型">
+                                      {{ result.recognition_result.transaction_type || '未识别' }}
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="置信度">
+                                      <a-tag color="blue">{{ result.recognition_result.confidence_score || 0 }}%</a-tag>
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="交易日期" v-if="result.recognition_result.transaction_date">
+                                      {{ result.recognition_result.transaction_date }}
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="收款人" v-if="result.recognition_result.payee_name">
+                                      {{ result.recognition_result.payee_name }}
+                                    </a-descriptions-item>
+                                  </a-descriptions>
+                                </div>
+                                <!-- 可展开的原始数据 -->
+                                <a-collapse style="margin-top: 8px;">
+                                  <a-collapse-panel key="raw" header="查看原始识别数据">
+                                    <pre class="raw-data">{{ JSON.stringify(result.recognition_result, null, 2) }}</pre>
+                                  </a-collapse-panel>
+                                </a-collapse>
+                              </div>
+                              <div v-else class="error-content">
+                                <a-alert type="error" :message="result.recognition_result?.error || '识别失败'" size="small" />
+                              </div>
+                            </a-card>
+                          </div>
+                        </div>
+                        
+                        <!-- 错误信息 -->
+                        <div v-if="aiRecognitionData?.order_recognition?.error" class="error-info">
+                          <a-alert type="error" :message="aiRecognitionData.order_recognition.error" size="small" />
+                        </div>
+                      </div>
+                    </a-card>
+                  </div>
+
+                  <!-- 支付记录AI识别结果（多笔支付） -->
+                  <div v-if="currentOrder?.enable_multi_payment" class="payments-recognition-section">
+                    <h4>支付记录AI识别结果</h4>
+                    
+                    <!-- 显示所有支付记录（包括未识别的） -->
+                    <div v-for="payment in paymentDetails?.payments || []" :key="payment.id" class="payment-recognition-item">
+                      <a-card size="small" style="margin-bottom: 16px;">
+                        <template #title>
+                          <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>{{ payment.payer_name }} - Rp {{ formatCurrency(payment.payment_amount) }}</span>
+                            <a-tag 
+                              :color="getAiRecognitionColor(payment.ai_recognition_status || 'pending')"
+                              size="small"
+                            >
+                              {{ getAiRecognitionText(payment.ai_recognition_status || 'pending') }}
+                            </a-tag>
+                          </div>
+                        </template>
+                        
+                        <a-descriptions :column="2" size="small">
+                          <a-descriptions-item label="支付金额">
+                            Rp {{ formatCurrency(payment.payment_amount) }}
+                          </a-descriptions-item>
+                          <a-descriptions-item label="AI识别金额" v-if="payment.ai_recognition_result && getAiRecognizedAmount(payment) > 0">
+                            <span class="amount-highlight">
+                              Rp {{ formatCurrency(getAiRecognizedAmount(payment)) }}
+                            </span>
+                          </a-descriptions-item>
+                          <a-descriptions-item label="置信度" v-if="payment.ai_recognition_confidence">
+                            {{ payment.ai_recognition_confidence }}%
+                          </a-descriptions-item>
+                          <a-descriptions-item label="识别时间" v-if="payment.ai_recognition_at">
+                            {{ formatDateTime(payment.ai_recognition_at) }}
+                          </a-descriptions-item>
+                        </a-descriptions>
+                        
+                        <!-- 识别结果详情 -->
+                        <div v-if="payment.ai_recognition_result && Array.isArray(payment.ai_recognition_result)" class="recognition-details">
+                          <h5>识别详情：</h5>
+                          <div v-for="(result, index) in payment.ai_recognition_result" :key="index" class="result-item">
+                            <a-card size="small" style="margin-bottom: 8px;">
+                              <div class="result-header">
+                                <strong>{{ result.image_name }}</strong>
+                                <a-tag v-if="result.recognition_result?.success" color="green">识别成功</a-tag>
+                                <a-tag v-else color="red">识别失败</a-tag>
+                              </div>
+                              <div v-if="result.recognition_result?.success" class="result-content">
+                                <!-- 🔧 改进：显示关键信息而不是原始JSON -->
+                                <div class="recognition-summary">
+                                  <a-descriptions :column="2" size="small">
+                                    <a-descriptions-item label="银行">
+                                      {{ result.recognition_result.bank_name || '未识别' }}
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="金额">
+                                      <span class="amount-highlight">
+                                        Rp {{ formatCurrency(result.recognition_result.amount || 0) }}
+                                      </span>
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="交易类型">
+                                      {{ result.recognition_result.transaction_type || '未识别' }}
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="置信度">
+                                      <a-tag color="blue">{{ result.recognition_result.confidence_score || 0 }}%</a-tag>
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="交易日期" v-if="result.recognition_result.transaction_date">
+                                      {{ result.recognition_result.transaction_date }}
+                                    </a-descriptions-item>
+                                    <a-descriptions-item label="收款人" v-if="result.recognition_result.payee_name">
+                                      {{ result.recognition_result.payee_name }}
+                                    </a-descriptions-item>
+                                  </a-descriptions>
+                                </div>
+                                <!-- 可展开的原始数据 -->
+                                <a-collapse style="margin-top: 8px;">
+                                  <a-collapse-panel key="raw" header="查看原始识别数据">
+                                    <pre class="raw-data">{{ JSON.stringify(result.recognition_result, null, 2) }}</pre>
+                                  </a-collapse-panel>
+                                </a-collapse>
+                              </div>
+                              <div v-else class="error-content">
+                                <a-alert type="error" :message="result.recognition_result?.error || '识别失败'" size="small" />
+                              </div>
+                            </a-card>
+                          </div>
+                        </div>
+                        
+                        <!-- 未识别或无凭证状态 -->
+                        <div v-else-if="payment.ai_recognition_status === 'pending'" class="pending-recognition">
+                          <a-alert type="info" message="此支付记录尚未进行AI识别" size="small" />
+                        </div>
+                        
+                        <!-- 错误信息 -->
+                        <div v-if="payment.ai_recognition_error" class="error-info">
+                          <a-alert type="error" :message="payment.ai_recognition_error" size="small" />
+                        </div>
+                      </a-card>
+                    </div>
+                  </div>
+
+                  <!-- 无AI识别数据：只有在单笔支付且没有AI结果时显示 -->
+                  <div v-if="!currentOrder?.enable_multi_payment && (!currentOrder?.ai_recognition_status || currentOrder.ai_recognition_status === 'pending')" class="no-recognition-data">
+                    <a-empty description="暂无AI识别数据">
+                      <template #description>
+                        <span style="color: #999;">
+                          订单暂未进行AI识别或正在识别中
+                        </span>
+                      </template>
+                    </a-empty>
+                  </div>
+                </a-spin>
+              </div>
             </a-tab-pane>
           </a-tabs>
         </a-spin>
@@ -397,12 +666,14 @@ import { orderAPI } from '@/api/order'
 // 响应式数据
 const loading = ref(false)
 const detailsLoading = ref(false)
+const aiRecognitionLoading = ref(false)
 const orders = ref([])
 const allOrders = ref([]) // 缓存所有订单数据
 const availableStores = ref([])
 const detailsVisible = ref(false)
 const currentOrder = ref(null)
 const paymentDetails = ref(null)
+const aiRecognitionData = ref(null)
 const activeTab = ref('players')
 
 // 筛选条件
@@ -430,6 +701,7 @@ const columns = [
   { title: '客户信息', key: 'customer_info', width: 150 },
   { title: '游戏信息', key: 'game_info', width: 200 },
   { title: '支付信息', key: 'payment_info', width: 150 },
+  { title: 'AI识别结果', key: 'ai_recognition_info', width: 180 },
   { title: '操作', key: 'actions', width: 120, fixed: 'right' }
 ]
 
@@ -443,9 +715,11 @@ const playerColumns = [
 const paymentColumns = [
   { title: '付款人', key: 'payer_info', width: 150 },
   { title: '支付金额', key: 'payment_amount', width: 120 },
+  { title: 'AI识别金额', key: 'ai_amount', width: 120 },
   { title: '支付方式', key: 'payment_method', width: 100 },
   { title: '支付状态', key: 'payment_status', width: 100 },
   { title: '支付凭证', key: 'payment_proof', width: 120 },
+  { title: 'AI识别', key: 'ai_recognition', width: 120 },
   { title: '支付时间', key: 'payment_date', width: 150 }
 ]
 
@@ -535,8 +809,13 @@ const viewPaymentDetails = async (order) => {
   detailsLoading.value = true
   
   try {
-    const response = await orderAPI.getOrderPaymentSummary(order.id)
-    if (response.success) {
+    // 只获取支付详情，AI识别结果直接从其中提取
+    const paymentResponse = await orderAPI.getOrderPaymentSummary(order.id)
+    
+    // 处理支付详情
+    if (paymentResponse.success) {
+      const response = paymentResponse
+      
       // 🆕 处理支付记录中的图片数据格式转换
       if (response.data.payments && response.data.payments.length > 0) {
         response.data.payments = response.data.payments.map(payment => {
@@ -567,7 +846,11 @@ const viewPaymentDetails = async (order) => {
       }
       
       paymentDetails.value = response.data
+      
+      // 🤖 直接从支付汇总数据中提取AI识别结果
+      extractAiRecognitionData(response.data)
     }
+    
   } catch (error) {
     console.error('加载支付详情失败:', error)
     message.error('加载支付详情失败')
@@ -580,7 +863,62 @@ const handleCloseDetails = () => {
   detailsVisible.value = false
   currentOrder.value = null
   paymentDetails.value = null
+  aiRecognitionData.value = null
   activeTab.value = 'players'
+}
+
+// 🤖 从支付汇总数据中提取AI识别结果
+const extractAiRecognitionData = (paymentSummaryData) => {
+  aiRecognitionLoading.value = true
+  
+  try {
+    const { order, payments } = paymentSummaryData
+    
+    let aiData = {
+      order_id: order.id,
+      enable_multi_payment: order.enable_multi_payment,
+      order_recognition: null,
+      payments_recognition: []
+    }
+    
+    if (order.enable_multi_payment) {
+      // 多笔支付：提取每个支付记录的AI识别结果
+      aiData.payments_recognition = payments
+        .filter(payment => payment.ai_recognition_status && payment.ai_recognition_status !== 'pending')
+        .map(payment => ({
+          payment_id: payment.id,
+          payer_name: payment.payer_name,
+          payment_amount: payment.payment_amount,
+          status: payment.ai_recognition_status,
+          result: payment.ai_recognition_result,
+          error: payment.ai_recognition_error,
+          recognized_at: payment.ai_recognition_at,
+          confidence: payment.ai_recognition_confidence
+        }))
+    } else {
+      // 单笔支付：提取订单级别的AI识别结果
+      if (order.ai_recognition_status && order.ai_recognition_status !== 'pending') {
+        aiData.order_recognition = {
+          status: order.ai_recognition_status,
+          result: order.ai_recognition_result,
+          error: order.ai_recognition_error,
+          recognized_at: order.ai_recognition_at,
+          confidence: order.ai_recognition_confidence,
+          total_recognized_amount: order.ai_total_recognized_amount,
+          total_confidence_score: order.ai_total_confidence_score,
+          recognition_summary: order.ai_recognition_summary
+        }
+      }
+    }
+    
+    aiRecognitionData.value = aiData
+    console.log('🤖 AI识别数据提取完成:', aiData)
+    
+  } catch (error) {
+    console.error('提取AI识别结果失败:', error)
+  } finally {
+    aiRecognitionLoading.value = false
+  }
 }
 
 // 工具方法
@@ -659,6 +997,63 @@ const getDiscountText = (player) => {
     return '混合折扣'
   }
   return '无折扣'
+}
+
+// 🤖 AI识别状态相关方法
+const getAiRecognitionColor = (status) => {
+  const colorMap = {
+    'pending': 'default',
+    'processing': 'blue',
+    'success': 'green',
+    'failed': 'red',
+    'skipped': 'orange'
+  }
+  return colorMap[status] || 'default'
+}
+
+const getAiRecognitionText = (status) => {
+  const textMap = {
+    'pending': '待识别',
+    'processing': '识别中',
+    'success': '识别成功',
+    'failed': '识别失败',
+    'skipped': '已跳过'
+  }
+  return textMap[status] || '未知状态'
+}
+
+// 🤖 获取AI识别的金额
+const getAiRecognizedAmount = (paymentRecord) => {
+  if (!paymentRecord.ai_recognition_result) return 0
+  
+  try {
+    // 如果是字符串，先解析为JSON
+    let results = paymentRecord.ai_recognition_result
+    if (typeof results === 'string') {
+      results = JSON.parse(results)
+    }
+    
+    // 如果是数组，遍历所有识别结果获取总金额
+    if (Array.isArray(results)) {
+      let totalAmount = 0
+      results.forEach(result => {
+        if (result.recognition_result && result.recognition_result.amount) {
+          totalAmount += parseFloat(result.recognition_result.amount || 0)
+        }
+      })
+      return totalAmount
+    }
+    
+    // 如果是单个结果对象
+    if (results.recognition_result && results.recognition_result.amount) {
+      return parseFloat(results.recognition_result.amount || 0)
+    }
+    
+    return 0
+  } catch (error) {
+    console.warn('解析AI识别金额失败:', error)
+    return 0
+  }
 }
 
 // 🆕 为单笔支付订单生成玩家显示数据
@@ -771,7 +1166,13 @@ const generateSinglePaymentRecord = (order) => {
     covers_player_count: order.player_count || 0,
     payment_for_roles: ['所有玩家'],
     notes: '传统订单统一支付',
-    images: order.images || []
+    images: order.images || [],
+    // 🤖 AI识别相关字段（从订单数据复制）
+    ai_recognition_status: order.ai_recognition_status,
+    ai_recognition_confidence: order.ai_recognition_confidence,
+    ai_recognition_result: order.ai_recognition_result,
+    ai_recognition_at: order.ai_recognition_at,
+    ai_recognition_error: order.ai_recognition_error
   }]
 }
 
@@ -997,6 +1398,157 @@ const formatPaymentImages = (payment) => {
       font-size: 12px;
       color: #666;
       margin-top: 4px;
+    }
+  }
+
+  // 🤖 AI识别相关样式
+  .ai-recognition-info {
+    .confidence-score {
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+    }
+
+    // 🆕 表格中AI识别信息的样式
+    .ai-amount {
+      display: flex;
+      align-items: center;
+      margin-bottom: 4px;
+      
+      .amount-label {
+        font-size: 11px;
+        color: #666;
+        margin-right: 4px;
+      }
+      
+      .amount-value {
+        font-size: 12px;
+        font-weight: 500;
+        color: #52c41a;
+      }
+    }
+
+    .ai-confidence {
+      display: flex;
+      align-items: center;
+      
+      .confidence-label {
+        font-size: 11px;
+        color: #666;
+        margin-right: 4px;
+      }
+      
+      .confidence-value {
+        font-size: 11px;
+        font-weight: 500;
+        color: #1890ff;
+      }
+    }
+
+    .no-ai-data {
+      display: flex;
+      justify-content: center;
+    }
+  }
+
+  // 🤖 AI识别金额列样式
+  .ai-amount-cell {
+    .ai-amount-value {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      
+      .ai-label {
+        font-size: 10px;
+        color: #999;
+      }
+      
+      .amount-text {
+        font-size: 12px;
+        font-weight: 500;
+        color: #52c41a;
+      }
+    }
+    
+    .ai-amount-empty {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      
+      .ai-label {
+        font-size: 10px;
+        color: #999;
+      }
+      
+      .no-amount {
+        font-size: 11px;
+        color: #ccc;
+      }
+    }
+    
+    .ai-amount-pending {
+      display: flex;
+      justify-content: center;
+    }
+  }
+
+  .ai-recognition-results {
+    .recognition-details {
+      margin-top: 12px;
+
+      h5 {
+        margin: 8px 0 4px 0;
+        font-size: 12px;
+        color: #666;
+      }
+
+      .result-item {
+        .result-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+
+        .result-content {
+          .recognition-summary {
+            background: #f8f9fa;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 8px;
+            
+            .amount-highlight {
+              color: #52c41a;
+              font-weight: 500;
+            }
+          }
+          
+          .raw-data {
+            margin: 0;
+            font-size: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+          }
+        }
+
+        .error-content {
+          margin-top: 4px;
+        }
+      }
+    }
+
+    .no-recognition-data {
+      text-align: center;
+      padding: 40px 0;
+    }
+    
+    .pending-recognition {
+      margin-top: 12px;
     }
   }
 }

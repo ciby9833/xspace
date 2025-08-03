@@ -1,4 +1,4 @@
-// 721已经更新发布支付表结构迁移 - node src/database/migrate-multi-payment-tables.js
+// 0803已发布支付表结构迁移 - node src/database/migrate-multi-payment-tables.js
 require('dotenv').config();
 
 const pool = require('./connection');
@@ -117,7 +117,14 @@ const migrateMultiPaymentTables = async () => {
       
       // 支付处理时间追踪
       { name: 'confirmed_at', sql: 'ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ' },
-      { name: 'processed_at', sql: 'ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ' }
+      { name: 'processed_at', sql: 'ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ' },
+      
+      // 🤖 AI识别相关字段
+      { name: 'ai_recognition_status', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_status VARCHAR(20) DEFAULT \'pending\' CHECK (ai_recognition_status IN (\'pending\', \'processing\', \'success\', \'failed\', \'skipped\'))' },
+      { name: 'ai_recognition_result', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_result JSONB' },
+      { name: 'ai_recognition_error', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_error TEXT' },
+      { name: 'ai_recognition_at', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_at TIMESTAMPTZ' },
+      { name: 'ai_recognition_confidence', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_confidence DECIMAL(5,2)' }
     ];
     
     for (const field of orderPaymentFields) {
@@ -421,7 +428,13 @@ const migrateMultiPaymentTables = async () => {
       { sql: 'CREATE INDEX IF NOT EXISTS idx_orders_payment_split_count ON orders(payment_split_count)', required: true },
       { sql: 'CREATE INDEX IF NOT EXISTS idx_orders_payment_completion_percentage ON orders(payment_completion_percentage)', required: true },
       { sql: 'CREATE INDEX IF NOT EXISTS idx_orders_first_payment_received_at ON orders(first_payment_received_at)', required: true },
-      { sql: 'CREATE INDEX IF NOT EXISTS idx_orders_all_payments_completed_at ON orders(all_payments_completed_at)', required: true }
+      { sql: 'CREATE INDEX IF NOT EXISTS idx_orders_all_payments_completed_at ON orders(all_payments_completed_at)', required: true },
+      
+      // 🤖 AI识别相关索引
+      { sql: 'CREATE INDEX IF NOT EXISTS idx_orders_ai_recognition_status ON orders(ai_recognition_status)', table: 'orders', column: 'ai_recognition_status' },
+      { sql: 'CREATE INDEX IF NOT EXISTS idx_orders_ai_recognition_at ON orders(ai_recognition_at)', table: 'orders', column: 'ai_recognition_at' },
+      { sql: 'CREATE INDEX IF NOT EXISTS idx_order_payments_ai_recognition_status ON order_payments(ai_recognition_status)', table: 'order_payments', column: 'ai_recognition_status' },
+      { sql: 'CREATE INDEX IF NOT EXISTS idx_order_payments_ai_recognition_at ON order_payments(ai_recognition_at)', table: 'order_payments', column: 'ai_recognition_at' }
     ];
 
     for (const index of indexes) {
@@ -773,7 +786,14 @@ const migrateMultiPaymentTables = async () => {
       { column: 'original_total_amount', comment: '原价总金额（所有覆盖玩家的原价之和）' },
       { column: 'discount_total_amount', comment: '折扣总金额（所有覆盖玩家的折扣之和）' },
       { column: 'confirmed_at', comment: '支付确认时间' },
-      { column: 'processed_at', comment: '支付处理完成时间' }
+      { column: 'processed_at', comment: '支付处理完成时间' },
+      
+      // 🤖 AI识别相关字段注释
+      { column: 'ai_recognition_status', comment: 'AI识别状态：pending-待识别, processing-识别中, success-成功, failed-失败, skipped-跳过' },
+      { column: 'ai_recognition_result', comment: 'AI识别结果JSON数据（包含银行信息、付款人、金额等）' },
+      { column: 'ai_recognition_error', comment: 'AI识别错误信息' },
+      { column: 'ai_recognition_at', comment: 'AI识别完成时间' },
+      { column: 'ai_recognition_confidence', comment: 'AI识别置信度（0-100）' }
     ];
     
     for (const { column, comment } of orderPaymentNewColumns) {
@@ -920,7 +940,19 @@ const migrateMultiPaymentTables = async () => {
       { name: 'all_payments_completed_at', sql: 'ADD COLUMN IF NOT EXISTS all_payments_completed_at TIMESTAMPTZ' },
       
       // 多笔付款备注
-      { name: 'multi_payment_summary', sql: 'ADD COLUMN IF NOT EXISTS multi_payment_summary TEXT' }
+      { name: 'multi_payment_summary', sql: 'ADD COLUMN IF NOT EXISTS multi_payment_summary TEXT' },
+      
+      // 🤖 AI识别相关字段（用于场景二：单笔支付）
+      { name: 'ai_recognition_status', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_status VARCHAR(20) DEFAULT \'pending\' CHECK (ai_recognition_status IN (\'pending\', \'processing\', \'success\', \'failed\', \'skipped\'))' },
+      { name: 'ai_recognition_result', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_result JSONB' },
+      { name: 'ai_recognition_error', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_error TEXT' },
+      { name: 'ai_recognition_at', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_at TIMESTAMPTZ' },
+      { name: 'ai_recognition_confidence', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_confidence DECIMAL(5,2)' },
+      
+      // 🆕 AI识别总金额字段（两种场景通用）
+      { name: 'ai_total_recognized_amount', sql: 'ADD COLUMN IF NOT EXISTS ai_total_recognized_amount DECIMAL(12,2) DEFAULT 0' },
+      { name: 'ai_total_confidence_score', sql: 'ADD COLUMN IF NOT EXISTS ai_total_confidence_score DECIMAL(5,2) DEFAULT 0' },
+      { name: 'ai_recognition_summary', sql: 'ADD COLUMN IF NOT EXISTS ai_recognition_summary TEXT' }
     ];
     
     for (const field of multiPaymentFields) {
@@ -955,6 +987,16 @@ const migrateMultiPaymentTables = async () => {
       COMMENT ON COLUMN orders.last_payment_received_at IS '最后收到付款的时间';
       COMMENT ON COLUMN orders.all_payments_completed_at IS '所有付款完成的时间';
       COMMENT ON COLUMN orders.multi_payment_summary IS '多笔付款汇总信息（如：3笔付款，2人享受学生折扣，1人标准价格）';
+      
+      -- 🤖 AI识别相关字段注释
+      COMMENT ON COLUMN orders.ai_recognition_status IS 'AI识别状态：pending-待识别, processing-识别中, success-成功, failed-失败, skipped-跳过';
+      COMMENT ON COLUMN orders.ai_recognition_result IS 'AI识别结果JSON数据（包含银行信息、付款人、金额等）';
+      COMMENT ON COLUMN orders.ai_recognition_error IS 'AI识别错误信息';
+      COMMENT ON COLUMN orders.ai_recognition_at IS 'AI识别完成时间';
+      COMMENT ON COLUMN orders.ai_recognition_confidence IS 'AI识别置信度（0-100）';
+      COMMENT ON COLUMN orders.ai_total_recognized_amount IS 'AI识别总金额（单笔支付为单个凭证金额，分笔支付为所有凭证金额之和）';
+      COMMENT ON COLUMN orders.ai_total_confidence_score IS 'AI识别平均置信度（多个凭证时为平均值）';
+      COMMENT ON COLUMN orders.ai_recognition_summary IS 'AI识别摘要信息（如：识别3张凭证，总金额1,500,000 IDR，平均置信度85%）';
     `);
 
     // 10. 显示统计信息

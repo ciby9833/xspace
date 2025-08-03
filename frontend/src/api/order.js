@@ -282,4 +282,19 @@ export const generatePaymentItemsSuggestion = (data) => {
     method: 'post',
     data
   });
+};
+
+// 🤖 AI识别相关API
+export const getOrderRecognitionResult = (orderId) => {
+  return request({
+    url: `/api/order-payments/${orderId}/recognition-result`,
+    method: 'get'
+  });
+};
+
+export const triggerOrderRecognition = (orderId) => {
+  return request({
+    url: `/api/order-payments/${orderId}/recognize`,
+    method: 'post'
+  });
 }; 

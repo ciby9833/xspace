@@ -7,6 +7,9 @@ const { ACCOUNT_LEVELS } = require('../config/permissions');
 const orderPlayerModel = require('../models/orderPlayerModel');
 const orderPaymentModel = require('../models/orderPaymentModel');
 const rolePricingTemplateModel = require('../models/rolePricingTemplateModel');
+const geminiService = require('./geminiService');
+const fs = require('fs').promises;
+const path = require('path');
 
 class OrderService extends BaseService {
   constructor() {
@@ -2833,7 +2836,9 @@ class OrderService extends BaseService {
     console.log('🔧 开始生成付款项建议(按人数拆分):', {
       unit_price,
       player_count,
-      selected_role_templates_count: selected_role_templates.length
+      selected_role_templates_count: selected_role_templates.length,
+      user_company_id: user.company_id,
+      user_account_level: user.account_level
     });
     
     const unitPriceNum = parseFloat(unit_price) || 0;
@@ -2850,15 +2855,32 @@ class OrderService extends BaseService {
       
       if (playerCountNum <= 0) continue;
       
-      // 获取角色定价模板的详细信息
+      // 获取角色定价模板的详细信息（使用下单权限逻辑，避免权限冲突）
       let templateDetails = null;
       try {
         if (roleTemplate.template_id) {
-          const rolePricingTemplateService = require('./rolePricingTemplateService');
-          templateDetails = await rolePricingTemplateService.getTemplateDetail(roleTemplate.template_id, user);
+          console.log(`📋 正在获取角色模板详情: ${roleTemplate.template_id}`);
+          
+          // 🔧 直接从数据库查询，使用与for-order接口相同的权限逻辑
+          const rolePricingTemplateModel = require('../models/rolePricingTemplateModel');
+          const template = await rolePricingTemplateModel.findById(roleTemplate.template_id);
+          
+          if (template) {
+            console.log(`✅ 找到角色模板: ${template.role_name}, 公司ID: ${template.company_id}, 用户公司ID: ${user.company_id}`);
+            
+            if (template.company_id === user.company_id) {
+              templateDetails = template;
+              console.log(`🎯 角色模板权限验证通过: ${template.role_name}`);
+            } else {
+              console.warn(`❌ 角色模板权限不足: ${roleTemplate.template_id}, 模板公司: ${template.company_id}, 用户公司: ${user.company_id}`);
+            }
+          } else {
+            console.warn(`❌ 角色模板不存在: ${roleTemplate.template_id}`);
+          }
         }
       } catch (error) {
-        console.warn('获取角色定价模板详情失败:', error.message);
+        console.error('❌ 获取角色定价模板详情失败:', error.message);
+        console.error('错误堆栈:', error.stack);
       }
       
       // 计算单人的折扣信息
@@ -3016,6 +3038,431 @@ class OrderService extends BaseService {
     });
     
     return result;
+  }
+
+  // 🤖 AI识别订单付款凭证
+  async recognizeOrderPaymentProof(orderId, user) {
+    console.log('🤖 开始识别订单付款凭证:', orderId, '用户:', user?.id);
+    
+    try {
+      const client = await pool.connect();
+      
+      try {
+        // 获取订单信息和图片数据
+        const orderResult = await client.query(`
+          SELECT 
+            o.id, 
+            o.enable_multi_payment, 
+            o.ai_recognition_status,
+            COALESCE(
+              ARRAY_AGG(
+                CASE WHEN oi.id IS NOT NULL THEN
+                  json_build_object(
+                    'id', oi.id,
+                    'url', oi.image_url,
+                    'name', oi.image_name,
+                    'type', oi.image_type,
+                    'sort_order', oi.sort_order
+                  )
+                END
+              ) FILTER (WHERE oi.id IS NOT NULL), 
+              '{}'::json[]
+            ) as images
+          FROM orders o
+          LEFT JOIN order_images oi ON o.id = oi.order_id
+          WHERE o.id = $1
+          GROUP BY o.id, o.enable_multi_payment, o.ai_recognition_status
+        `, [orderId]);
+        
+        if (orderResult.rows.length === 0) {
+          console.log('❌ 订单不存在:', orderId);
+          throw new Error('订单不存在');
+        }
+        
+        const order = orderResult.rows[0];
+        console.log('📋 订单信息:', {
+          id: order.id,
+          enable_multi_payment: order.enable_multi_payment,
+          ai_recognition_status: order.ai_recognition_status,
+          images_count: order.images?.length || 0
+        });
+        
+        if (order.images && order.images.length > 0) {
+          console.log('📸 订单图片信息:');
+          order.images.forEach((img, idx) => {
+            console.log(`   图片${idx+1}: ${img.name} -> ${img.url}`);
+          });
+        } else {
+          console.log('⚠️  订单无图片数据');
+        }
+        
+        if (order.enable_multi_payment) {
+          // 场景一：多笔支付，识别每个支付记录的凭证
+          await this._recognizeMultiPaymentProofs(orderId, client);
+        } else {
+          // 场景二：单笔支付，识别订单的images字段
+          await this._recognizeSinglePaymentProof(orderId, order.images, client);
+        }
+        
+        console.log('✅ 订单付款凭证识别完成:', orderId);
+        
+      } finally {
+        client.release();
+      }
+      
+    } catch (error) {
+      console.error('❌ 订单付款凭证识别失败:', error);
+      throw error;
+    }
+  }
+
+  // 🤖 识别多笔支付的凭证（场景一）
+  async _recognizeMultiPaymentProofs(orderId, client) {
+    console.log('🔄 识别多笔支付凭证...');
+    
+    // 获取所有支付记录
+    const paymentsResult = await client.query(`
+      SELECT id, payment_proof_images, ai_recognition_status
+      FROM order_payments 
+      WHERE order_id = $1 AND payment_proof_images IS NOT NULL AND array_length(payment_proof_images, 1) > 0
+    `, [orderId]);
+    
+    console.log(`📊 找到 ${paymentsResult.rows.length} 个有凭证的支付记录`);
+    
+    for (const payment of paymentsResult.rows) {
+      try {
+        // 跳过已经识别过的
+        if (payment.ai_recognition_status === 'success') {
+          console.log(`⏭️  跳过已识别的支付记录: ${payment.id}`);
+          continue;
+        }
+        
+        // 更新状态为处理中
+        await client.query(`
+          UPDATE order_payments 
+          SET ai_recognition_status = 'processing', updated_at = NOW()
+          WHERE id = $1
+        `, [payment.id]);
+        
+        const proofImages = payment.payment_proof_images;
+        let recognitionResults = [];
+        let hasError = false;
+        let errorMessage = '';
+        
+        // 处理每张凭证图片
+        for (const imageJson of proofImages) {
+          try {
+            const imageData = typeof imageJson === 'string' ? JSON.parse(imageJson) : imageJson;
+            const imagePath = imageData.server_path || imageData.image_url;
+            
+            if (!imagePath) {
+              console.log('⚠️  图片路径为空，跳过');
+              continue;
+            }
+            
+            // 读取图片文件
+            const fullPath = path.join(process.cwd(), imagePath.startsWith('/') ? imagePath.slice(1) : imagePath);
+            const imageBuffer = await fs.readFile(fullPath);
+            const mimeType = this._getMimeTypeFromPath(fullPath);
+            
+            // 调用Gemini识别
+            const result = await geminiService.analyzeBankPayment(imageBuffer, mimeType);
+            
+            recognitionResults.push({
+              image_id: imageData.id,
+              image_name: imageData.image_name || imageData.name,
+              recognition_result: result,
+              processed_at: new Date().toISOString()
+            });
+            
+          } catch (imageError) {
+            console.error(`❌ 处理图片失败:`, imageError);
+            hasError = true;
+            errorMessage += `图片处理失败: ${imageError.message}; `;
+          }
+        }
+        
+        // 更新识别结果
+        if (hasError && recognitionResults.length === 0) {
+          // 完全失败
+          await client.query(`
+            UPDATE order_payments 
+            SET ai_recognition_status = 'failed',
+                ai_recognition_error = $2,
+                ai_recognition_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+          `, [payment.id, errorMessage]);
+        } else {
+          // 成功或部分成功
+          const avgConfidence = recognitionResults.reduce((sum, r) => {
+            return sum + (r.recognition_result.confidence_score || r.recognition_result.confidence || 0);
+          }, 0) / Math.max(recognitionResults.length, 1);
+          
+          await client.query(`
+            UPDATE order_payments 
+            SET ai_recognition_status = $2,
+                ai_recognition_result = $3,
+                ai_recognition_error = $4,
+                ai_recognition_confidence = $5,
+                ai_recognition_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+          `, [
+            payment.id,
+            recognitionResults.length > 0 ? 'success' : 'failed',
+            JSON.stringify(recognitionResults),
+            hasError ? errorMessage : null,
+            avgConfidence
+          ]);
+        }
+        
+        console.log(`✅ 支付记录 ${payment.id} 识别完成`);
+        
+      } catch (error) {
+        console.error(`❌ 支付记录 ${payment.id} 识别失败:`, error);
+        
+        // 更新为失败状态
+        await client.query(`
+          UPDATE order_payments 
+          SET ai_recognition_status = 'failed',
+              ai_recognition_error = $2,
+              ai_recognition_at = NOW(),
+              updated_at = NOW()
+          WHERE id = $1
+        `, [payment.id, error.message]);
+      }
+    }
+    
+    // 🆕 计算并更新订单的AI识别总金额（汇总所有支付记录的识别金额）
+    await this._updateOrderAiTotalAmount(orderId, client);
+  }
+
+  // 🤖 识别单笔支付的凭证（场景二）
+  async _recognizeSinglePaymentProof(orderId, imagesData, client) {
+    console.log('🔄 识别单笔支付凭证...');
+    
+    if (!imagesData || imagesData.length === 0) {
+      console.log('⏭️  无支付凭证，跳过识别');
+      await client.query(`
+        UPDATE orders 
+        SET ai_recognition_status = 'skipped', updated_at = NOW()
+        WHERE id = $1
+      `, [orderId]);
+      return;
+    }
+    
+    try {
+      // 更新状态为处理中
+      await client.query(`
+        UPDATE orders 
+        SET ai_recognition_status = 'processing', updated_at = NOW()
+        WHERE id = $1
+      `, [orderId]);
+      
+      let recognitionResults = [];
+      let hasError = false;
+      let errorMessage = '';
+      
+      // 处理每张凭证图片
+      for (const imageData of imagesData) {
+        try {
+          const imagePath = imageData.url;
+          
+          if (!imagePath) {
+            console.log('⚠️  图片路径为空，跳过');
+            continue;
+          }
+          
+          // 读取图片文件
+          const fullPath = path.join(process.cwd(), imagePath.startsWith('/') ? imagePath.slice(1) : imagePath);
+          const imageBuffer = await fs.readFile(fullPath);
+          const mimeType = this._getMimeTypeFromPath(fullPath);
+          
+          // 调用Gemini识别
+          const result = await geminiService.analyzeBankPayment(imageBuffer, mimeType);
+          
+          recognitionResults.push({
+            image_name: imageData.name,
+            image_type: imageData.type,
+            recognition_result: result,
+            processed_at: new Date().toISOString()
+          });
+          
+        } catch (imageError) {
+          console.error(`❌ 处理图片失败:`, imageError);
+          hasError = true;
+          errorMessage += `图片处理失败: ${imageError.message}; `;
+        }
+      }
+      
+      // 更新识别结果
+      if (hasError && recognitionResults.length === 0) {
+        // 完全失败
+        await client.query(`
+          UPDATE orders 
+          SET ai_recognition_status = 'failed',
+              ai_recognition_error = $2,
+              ai_recognition_at = NOW(),
+              updated_at = NOW()
+          WHERE id = $1
+        `, [orderId, errorMessage]);
+      } else {
+        // 成功或部分成功
+        const avgConfidence = recognitionResults.reduce((sum, r) => {
+          return sum + (r.recognition_result.confidence_score || r.recognition_result.confidence || 0);
+        }, 0) / Math.max(recognitionResults.length, 1);
+        
+        // 计算识别总金额
+        const totalRecognizedAmount = recognitionResults.reduce((sum, r) => {
+          const amount = r.recognition_result?.amount || 0;
+          return sum + parseFloat(amount || 0);
+        }, 0);
+        
+        await client.query(`
+          UPDATE orders 
+          SET ai_recognition_status = $2,
+              ai_recognition_result = $3,
+              ai_recognition_error = $4,
+              ai_recognition_confidence = $5,
+              ai_total_recognized_amount = $6,
+              ai_total_confidence_score = $7,
+              ai_recognition_summary = $8,
+              ai_recognition_at = NOW(),
+              updated_at = NOW()
+          WHERE id = $1
+        `, [
+          orderId,
+          recognitionResults.length > 0 ? 'success' : 'failed',
+          JSON.stringify(recognitionResults),
+          hasError ? errorMessage : null,
+          avgConfidence,
+          totalRecognizedAmount,
+          avgConfidence,
+          `识别${recognitionResults.length}张凭证，总金额${totalRecognizedAmount.toLocaleString()} IDR，平均置信度${avgConfidence.toFixed(1)}%`
+        ]);
+      }
+      
+      console.log(`✅ 订单 ${orderId} 单笔支付识别完成`);
+      
+    } catch (error) {
+      console.error(`❌ 订单 ${orderId} 单笔支付识别失败:`, error);
+      
+      // 更新为失败状态
+      await client.query(`
+        UPDATE orders 
+        SET ai_recognition_status = 'failed',
+            ai_recognition_error = $2,
+            ai_recognition_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+      `, [orderId, error.message]);
+    }
+  }
+
+  // 🆕 更新订单AI识别总金额（多笔支付场景汇总）
+  async _updateOrderAiTotalAmount(orderId, client) {
+    console.log('🧮 计算订单AI识别总金额...');
+    
+    try {
+      // 查询所有支付记录的AI识别结果
+      const paymentsResult = await client.query(`
+        SELECT 
+          ai_recognition_status,
+          ai_recognition_result,
+          ai_recognition_confidence
+        FROM order_payments 
+        WHERE order_id = $1 
+          AND ai_recognition_status IN ('success', 'failed')
+      `, [orderId]);
+      
+      let totalRecognizedAmount = 0;
+      let totalConfidence = 0;
+      let successCount = 0;
+      let totalCount = paymentsResult.rows.length;
+      
+      // 汇总所有成功识别的金额和置信度
+      for (const payment of paymentsResult.rows) {
+        if (payment.ai_recognition_status === 'success' && payment.ai_recognition_result) {
+          try {
+            // 如果已经是对象，直接使用；如果是字符串，则解析
+            let results = payment.ai_recognition_result;
+            if (typeof results === 'string') {
+              results = JSON.parse(results);
+            }
+            
+            if (Array.isArray(results)) {
+              // 多个识别结果
+              for (const result of results) {
+                if (result.recognition_result?.amount) {
+                  totalRecognizedAmount += parseFloat(result.recognition_result.amount || 0);
+                  totalConfidence += parseFloat(result.recognition_result.confidence_score || 0);
+                  successCount++;
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('解析AI识别结果失败:', error.message);
+          }
+        }
+      }
+      
+      const avgConfidence = successCount > 0 ? totalConfidence / successCount : 0;
+      
+      // 生成汇总信息
+      const summary = `分笔支付：${totalCount}笔记录，${successCount}笔识别成功，总金额${totalRecognizedAmount.toLocaleString()} IDR，平均置信度${avgConfidence.toFixed(1)}%`;
+      
+      // 确定整体状态
+      let overallStatus = 'pending';
+      if (totalCount > 0) {
+        if (successCount === totalCount) {
+          overallStatus = 'success';  // 全部成功
+        } else if (successCount > 0) {
+          overallStatus = 'success';  // 部分成功也算成功
+        } else {
+          overallStatus = 'failed';   // 全部失败
+        }
+      }
+      
+      // 更新订单表
+      await client.query(`
+        UPDATE orders 
+        SET ai_recognition_status = $2,
+            ai_total_recognized_amount = $3,
+            ai_total_confidence_score = $4,
+            ai_recognition_summary = $5,
+            ai_recognition_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+      `, [orderId, overallStatus, totalRecognizedAmount, avgConfidence, summary]);
+      
+      console.log('💰 订单AI识别总金额更新完成:', {
+        订单ID: orderId,
+        整体状态: overallStatus,
+        总金额: totalRecognizedAmount,
+        平均置信度: avgConfidence,
+        成功笔数: successCount,
+        总笔数: totalCount
+      });
+      
+    } catch (error) {
+      console.error('❌ 更新订单AI识别总金额失败:', error);
+      throw error;
+    }
+  }
+
+  // 🔧 工具方法：根据文件路径获取MIME类型
+  _getMimeTypeFromPath(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.bmp': 'image/bmp',
+      '.webp': 'image/webp'
+    };
+    return mimeTypes[ext] || 'image/jpeg';
   }
 }
 

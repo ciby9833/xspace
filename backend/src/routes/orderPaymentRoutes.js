@@ -299,4 +299,24 @@ router.post('/batch-process',
   orderPaymentController.mergePayments
 );
 
+// 🤖 手动触发AI识别订单付款凭证
+router.post('/:orderId/recognize',
+  authenticateToken,
+  checkPermission('order.view'),
+  [
+    param('orderId').isUUID().withMessage('订单ID格式不正确')
+  ],
+  orderPaymentController.recognizeOrderPaymentProof
+);
+
+// 🤖 获取订单AI识别结果
+router.get('/:orderId/recognition-result',
+  authenticateToken,
+  checkPermission('order.view'),
+  [
+    param('orderId').isUUID().withMessage('订单ID格式不正确')
+  ],
+  orderPaymentController.getOrderRecognitionResult
+);
+
 module.exports = router; 

@@ -615,6 +615,90 @@ class OrderPaymentService extends BaseService {
     
     return formatted;
   }
+
+  // 🤖 获取订单AI识别结果
+  async getOrderRecognitionResult(orderId, user) {
+    // 检查权限
+    await PermissionChecker.requirePermission(user, 'order.view');
+    
+    // 检查订单是否存在且用户有权限访问
+    const order = await this.validateOrderAccess(orderId, user);
+    
+    const pool = require('../database/connection');
+    const client = await pool.connect();
+    
+    try {
+      // 获取订单AI识别结果
+      const orderResult = await client.query(`
+        SELECT 
+          id,
+          enable_multi_payment,
+          ai_recognition_status,
+          ai_recognition_result,
+          ai_recognition_error,
+          ai_recognition_at,
+          ai_recognition_confidence,
+          ai_total_recognized_amount,
+          ai_total_confidence_score,
+          ai_recognition_summary
+        FROM orders 
+        WHERE id = $1
+      `, [orderId]);
+      
+      const orderData = orderResult.rows[0];
+      
+      let result = {
+        order_id: orderId,
+        enable_multi_payment: orderData.enable_multi_payment,
+        order_recognition: {
+          status: orderData.ai_recognition_status || 'pending',
+          result: orderData.ai_recognition_result,
+          error: orderData.ai_recognition_error,
+          recognized_at: orderData.ai_recognition_at,
+          confidence: orderData.ai_recognition_confidence,
+          // 🆕 新增总金额相关字段
+          total_recognized_amount: orderData.ai_total_recognized_amount,
+          total_confidence_score: orderData.ai_total_confidence_score,
+          recognition_summary: orderData.ai_recognition_summary
+        },
+        payments_recognition: []
+      };
+      
+      if (orderData.enable_multi_payment) {
+        // 多笔支付：获取每个支付记录的AI识别结果
+        const paymentsResult = await client.query(`
+          SELECT 
+            id,
+            payer_name,
+            payment_amount,
+            ai_recognition_status,
+            ai_recognition_result,
+            ai_recognition_error,
+            ai_recognition_at,
+            ai_recognition_confidence
+          FROM order_payments 
+          WHERE order_id = $1
+          ORDER BY created_at
+        `, [orderId]);
+        
+        result.payments_recognition = paymentsResult.rows.map(payment => ({
+          payment_id: payment.id,
+          payer_name: payment.payer_name,
+          payment_amount: payment.payment_amount,
+          status: payment.ai_recognition_status || 'pending',
+          result: payment.ai_recognition_result,
+          error: payment.ai_recognition_error,
+          recognized_at: payment.ai_recognition_at,
+          confidence: payment.ai_recognition_confidence
+        }));
+      }
+      
+      return result;
+      
+    } finally {
+      client.release();
+    }
+  }
 }
 
 module.exports = new OrderPaymentService(); 

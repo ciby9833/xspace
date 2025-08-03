@@ -928,26 +928,7 @@
                   </a-button>
                 </div>
                 
-                <!-- 🤖 AI识别状态指示器 -->
-                <div class="recognition-status">
-                  <a-spin 
-                    v-if="getGeneralRecognitionStatus(index).isLoading" 
-                    size="small" 
-                    class="recognition-loading"
-                  />
-                  <a-badge 
-                    v-else-if="getGeneralRecognitionStatus(index).hasResult" 
-                    status="success" 
-                    text="已识别"
-                    class="recognition-success"
-                  />
-                  <a-badge 
-                    v-else-if="getGeneralRecognitionStatus(index).hasError" 
-                    status="error" 
-                    text="识别失败"
-                    class="recognition-error"
-                  />
-                </div>
+                <!-- AI识别将在后端处理 -->
               </div>
             </div>
             <div class="images-info">
@@ -967,163 +948,7 @@
         </div>
       </div>
 
-      <!-- 🤖 AI发票识别信息卡片 -->
-      <div v-if="(!showSplitPayment && paymentImages.length > 0) || (showSplitPayment && Object.keys(cardProofImages).length > 0)" class="form-card">
-        <div class="compact-header">
-          <BankOutlined class="header-icon" />
-          <span class="header-title">发票识别信息</span>
-          <span class="header-subtitle">AI自动识别的付款凭证信息</span>
-        </div>
-        
-        <!-- 常规付款凭证识别结果 -->
-        <div v-if="!showSplitPayment && paymentImages.length > 0" class="recognition-section">
-          <h4 class="section-title">常规付款凭证</h4>
-          <div class="recognition-results">
-            <div 
-              v-for="(image, index) in paymentImages" 
-              :key="`general-${index}`"
-              class="recognition-item"
-            >
-              <div class="recognition-header">
-                <img :src="image.url" :alt="`付款凭证${index + 1}`" class="recognition-thumbnail" />
-                <div class="recognition-meta">
-                  <span class="image-name">{{ image.name }}</span>
-                  <div class="recognition-status-text">
-                    <a-spin 
-                      v-if="getGeneralRecognitionStatus(index).isLoading" 
-                      size="small" 
-                    />
-                    <span v-else-if="getGeneralRecognitionStatus(index).hasResult" class="status-success">
-                      <CheckCircleOutlined /> 识别成功
-                    </span>
-                    <span v-else-if="getGeneralRecognitionStatus(index).hasError" class="status-error">
-                      <ExclamationCircleOutlined /> 识别失败
-                      <a-button 
-                        type="link" 
-                        size="small" 
-                        @click="retryGeneralAnalysis(index)"
-                        class="retry-btn"
-                      >
-                        重试
-                      </a-button>
-                    </span>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 识别结果详情 -->
-              <div v-if="getGeneralRecognitionStatus(index).hasResult" class="recognition-details">
-                <div class="result-summary">
-                  {{ getGeneralRecognitionStatus(index).result.displayText }}
-                </div>
-                <div class="result-details">
-                  <div 
-                    v-for="detail in getGeneralRecognitionStatus(index).result.details" 
-                    :key="detail.label"
-                    class="detail-item"
-                    :class="{ 'highlight': detail.highlight }"
-                  >
-                    <span class="detail-icon">{{ detail.icon }}</span>
-                    <span class="detail-label">{{ detail.label }}:</span>
-                    <span class="detail-value">{{ detail.value }}</span>
-                  </div>
-                </div>
-                <div class="confidence-score">
-                  置信度: {{ getGeneralRecognitionStatus(index).result.confidence }}%
-                </div>
-              </div>
-              
-              <!-- 识别错误信息 -->
-              <div v-else-if="getGeneralRecognitionStatus(index).hasError" class="recognition-error-info">
-                <a-alert 
-                  :message="getGeneralRecognitionStatus(index).error" 
-                  type="error" 
-                  size="small" 
-                  show-icon 
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 拆分付款凭证识别结果 -->
-        <div v-if="showSplitPayment && Object.keys(cardProofImages).length > 0" class="recognition-section">
-          <h4 class="section-title">拆分付款凭证</h4>
-          <div class="recognition-results">
-            <div 
-              v-for="(cardId, cardIndex) in Object.keys(cardProofImages)" 
-              :key="`card-${cardId}`"
-              class="card-recognition-group"
-            >
-              <div class="card-title">付款项 {{ cardIndex + 1 }}</div>
-              <div 
-                v-for="image in cardProofImages[cardId]" 
-                :key="`${cardId}-${image.id}`"
-                class="recognition-item"
-              >
-                <div class="recognition-header">
-                  <img :src="image.url" :alt="image.name" class="recognition-thumbnail" />
-                  <div class="recognition-meta">
-                    <span class="image-name">{{ image.name }}</span>
-                    <div class="recognition-status-text">
-                      <a-spin 
-                        v-if="getRecognitionStatus(cardId, image.id).isLoading" 
-                        size="small" 
-                      />
-                      <span v-else-if="getRecognitionStatus(cardId, image.id).hasResult" class="status-success">
-                        <CheckCircleOutlined /> 识别成功
-                      </span>
-                      <span v-else-if="getRecognitionStatus(cardId, image.id).hasError" class="status-error">
-                        <ExclamationCircleOutlined /> 识别失败
-                        <a-button 
-                          type="link" 
-                          size="small" 
-                          @click="retryAnalysis(cardId, image.id)"
-                          class="retry-btn"
-                        >
-                          重试
-                        </a-button>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- 识别结果详情 -->
-                <div v-if="getRecognitionStatus(cardId, image.id).hasResult" class="recognition-details">
-                  <div class="result-summary">
-                    {{ getRecognitionStatus(cardId, image.id).result.displayText }}
-                  </div>
-                  <div class="result-details">
-                    <div 
-                      v-for="detail in getRecognitionStatus(cardId, image.id).result.details" 
-                      :key="detail.label"
-                      class="detail-item"
-                      :class="{ 'highlight': detail.highlight }"
-                    >
-                      <span class="detail-icon">{{ detail.icon }}</span>
-                      <span class="detail-label">{{ detail.label }}:</span>
-                      <span class="detail-value">{{ detail.value }}</span>
-                    </div>
-                  </div>
-                  <div class="confidence-score">
-                    置信度: {{ getRecognitionStatus(cardId, image.id).result.confidence }}%
-                  </div>
-                </div>
-                
-                <!-- 识别错误信息 -->
-                <div v-else-if="getRecognitionStatus(cardId, image.id).hasError" class="recognition-error-info">
-                  <a-alert 
-                    :message="getRecognitionStatus(cardId, image.id).error" 
-                    type="error" 
-                    size="small" 
-                    show-icon 
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- AI识别将在后端处理，前端不再显示 -->
 
       <!-- 备注卡片 -->
       <div class="form-card">
@@ -1339,7 +1164,7 @@ import { orderAPI, generatePaymentItemsSuggestion, createOrderWithMultiPayment }
 import { getUsersByStore } from '@/api/user'
 import { rolePricingTemplateAPI } from '@/api/multiPayment'
 // 🤖 Gemini AI 图片识别服务
-import { analyzePaymentReceiptFromBlob, formatAnalysisResult } from '@/api/gemini'
+// AI识别相关API已删除，将在后端处理
 
 // Props
 const props = defineProps({
@@ -1385,15 +1210,7 @@ const proofPreviewVisible = ref(false)
 const previewProofUrl = ref('')
 const cardProofImages = ref({}) // 存储每个卡片的凭证图片 {cardId: [images]}
 
-// 🤖 Gemini AI 图片识别相关数据
-const recognitionLoading = ref({}) // 存储每个卡片每张图片的识别加载状态 {cardId: {imageId: boolean}}
-const recognitionResults = ref({}) // 存储识别结果 {cardId: {imageId: recognitionResult}}
-const recognitionErrors = ref({}) // 存储识别错误 {cardId: {imageId: errorMessage}}
-
-// 🤖 常规付款凭证识别相关数据
-const generalRecognitionLoading = ref({}) // 存储常规付款图片的识别加载状态 {imageIndex: boolean}
-const generalRecognitionResults = ref({}) // 存储常规付款图片的识别结果 {imageIndex: recognitionResult}
-const generalRecognitionErrors = ref({}) // 存储常规付款图片的识别错误 {imageIndex: errorMessage}
+// AI识别将在后端处理，前端不再需要这些变量
 
 // 🆕 移动设备检测和专门的凭证相机
 const isMobileDevice = ref(false)
@@ -2252,14 +2069,7 @@ const handleProofUpload = async (file) => {
     
     message.success('付款凭证上传成功');
     
-    // 🤖 自动启动Gemini AI识别
-    setTimeout(async () => {
-      try {
-        await analyzePaymentReceipt(selectedId, imageId, file);
-      } catch (error) {
-        console.error('自动识别失败:', error);
-      }
-    }, 500); // 延迟500ms启动识别，让用户先看到上传成功消息
+    // AI识别将在后端处理
     
     // 清除选中状态
     clearAllSelections();
@@ -2284,161 +2094,7 @@ const viewProofImages = (cardId) => {
   }
 };
 
-// 🤖 Gemini AI 图片识别功能
-const analyzePaymentReceipt = async (cardId, imageId, imageBlob) => {
-  try {
-    console.log('🤖 开始识别付款凭证:', { cardId, imageId });
-    
-    // 设置加载状态
-    if (!recognitionLoading.value[cardId]) {
-      recognitionLoading.value[cardId] = {};
-    }
-    recognitionLoading.value[cardId][imageId] = true;
-    
-    // 清除之前的错误
-    if (recognitionErrors.value[cardId] && recognitionErrors.value[cardId][imageId]) {
-      delete recognitionErrors.value[cardId][imageId];
-    }
-    
-    // 调用Gemini API识别
-    const response = await analyzePaymentReceiptFromBlob(imageBlob);
-    
-    if (response.success && response.data && response.data.analysis) {
-      // 格式化识别结果
-      const formattedResult = formatAnalysisResult(response.data.analysis);
-      
-      // 存储识别结果
-      if (!recognitionResults.value[cardId]) {
-        recognitionResults.value[cardId] = {};
-      }
-      recognitionResults.value[cardId][imageId] = formattedResult;
-      
-      console.log('✅ 付款凭证识别成功:', formattedResult);
-      message.success(`付款凭证识别成功 - ${formattedResult.displayText}`);
-      
-    } else {
-      throw new Error(response.message || '识别失败');
-    }
-    
-  } catch (error) {
-    console.error('❌ 付款凭证识别失败:', error);
-    
-    // 存储错误信息
-    if (!recognitionErrors.value[cardId]) {
-      recognitionErrors.value[cardId] = {};
-    }
-    recognitionErrors.value[cardId][imageId] = error.message || '识别失败';
-    
-    message.error(`付款凭证识别失败: ${error.message || '未知错误'}`);
-    
-  } finally {
-    // 清除加载状态
-    if (recognitionLoading.value[cardId]) {
-      recognitionLoading.value[cardId][imageId] = false;
-    }
-  }
-};
-
-// 🤖 重试识别
-const retryAnalysis = async (cardId, imageId) => {
-  const images = cardProofImages.value[cardId];
-  if (!images) return;
-  
-  const image = images.find(img => img.id === imageId);
-  if (!image) return;
-  
-  // 通过URL获取blob
-  try {
-    const response = await fetch(image.url);
-    const blob = await response.blob();
-    await analyzePaymentReceipt(cardId, imageId, blob);
-  } catch (error) {
-    console.error('重试获取图片失败:', error);
-    message.error('重试失败，请重新上传图片');
-  }
-};
-
-// 🤖 获取识别结果显示状态
-const getRecognitionStatus = (cardId, imageId) => {
-  const isLoading = recognitionLoading.value[cardId]?.[imageId] || false;
-  const result = recognitionResults.value[cardId]?.[imageId];
-  const error = recognitionErrors.value[cardId]?.[imageId];
-  
-  return {
-    isLoading,
-    hasResult: !!result,
-    hasError: !!error,
-    result,
-    error
-  };
-};
-
-// 🤖 常规付款凭证识别功能
-const analyzeGeneralPayment = async (imageIndex, imageBlob) => {
-  try {
-    console.log('🤖 开始识别常规付款凭证:', { imageIndex });
-    
-    // 设置加载状态
-    generalRecognitionLoading.value[imageIndex] = true;
-    
-    // 清除之前的错误
-    if (generalRecognitionErrors.value[imageIndex]) {
-      delete generalRecognitionErrors.value[imageIndex];
-    }
-    
-    // 调用Gemini API识别
-    const response = await analyzePaymentReceiptFromBlob(imageBlob);
-    
-    if (response.success && response.data && response.data.analysis) {
-      // 格式化识别结果
-      const formattedResult = formatAnalysisResult(response.data.analysis);
-      
-      // 存储识别结果
-      generalRecognitionResults.value[imageIndex] = formattedResult;
-      
-      console.log('✅ 常规付款凭证识别成功:', formattedResult);
-      message.success(`付款凭证识别成功 - ${formattedResult.displayText}`);
-      
-    } else {
-      throw new Error(response.message || '识别失败');
-    }
-    
-  } catch (error) {
-    console.error('❌ 常规付款凭证识别失败:', error);
-    
-    // 存储错误信息
-    generalRecognitionErrors.value[imageIndex] = error.message || '识别失败';
-    
-    message.error(`付款凭证识别失败: ${error.message || '未知错误'}`);
-    
-  } finally {
-    // 清除加载状态
-    generalRecognitionLoading.value[imageIndex] = false;
-  }
-};
-
-// 🤖 重试常规付款识别
-const retryGeneralAnalysis = async (imageIndex) => {
-  const image = paymentImages.value[imageIndex];
-  if (!image || !image.blob) return;
-  
-  await analyzeGeneralPayment(imageIndex, image.blob);
-};
-
-// 🤖 获取常规付款识别结果显示状态
-const getGeneralRecognitionStatus = (imageIndex) => {
-  const isLoading = generalRecognitionLoading.value[imageIndex] || false;
-  const result = generalRecognitionResults.value[imageIndex];
-  const error = generalRecognitionErrors.value[imageIndex];
-  
-  return {
-    isLoading,
-    hasResult: !!result,
-    hasError: !!error,
-    result,
-    error
-  };
-};
+// AI识别相关方法已删除，将在后端处理
 
 // 🆕 删除凭证图片
 const deleteProofImages = async (cardId) => {
@@ -2619,14 +2275,7 @@ const captureProofPhoto = async () => {
         
         message.success('付款凭证拍照上传成功');
         
-        // 🤖 自动启动Gemini AI识别
-        setTimeout(async () => {
-          try {
-            await analyzePaymentReceipt(currentSelectedCardId.value, imageId, blob);
-          } catch (error) {
-            console.error('自动识别失败:', error);
-          }
-        }, 500); // 延迟500ms启动识别
+        // AI识别将在后端处理
         
         // 清除选中状态并关闭相机
         clearAllSelections();
@@ -2676,14 +2325,7 @@ const capturePhoto = () => {
     message.success('拍照成功')
     closeCamera()
     
-    // 🤖 自动启动Gemini AI识别
-    setTimeout(async () => {
-      try {
-        await analyzeGeneralPayment(imageIndex, blob);
-      } catch (error) {
-        console.error('自动识别失败:', error);
-      }
-    }, 500); // 延迟500ms启动识别
+    // AI识别将在后端处理
   }, 'image/jpeg', 0.8)
 }
 
@@ -2712,14 +2354,7 @@ const handleFileUpload = (file) => {
   
   message.success('图片添加成功')
   
-  // 🤖 自动启动Gemini AI识别
-  setTimeout(async () => {
-    try {
-      await analyzeGeneralPayment(imageIndex, file);
-    } catch (error) {
-      console.error('自动识别失败:', error);
-    }
-  }, 500); // 延迟500ms启动识别
+  // AI识别将在后端处理
   
   return false // 阻止自动上传
 }
